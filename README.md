@@ -1,2 +1,2 @@
 # go-learning
-Learn Go with AI-Assisted Learning Environment Setup
+Learn Go with an AI-Assisted Learning Environment Setup
