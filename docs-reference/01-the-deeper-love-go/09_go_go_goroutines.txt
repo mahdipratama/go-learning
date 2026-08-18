@@ -1,0 +1,656 @@
+9. Go go goroutines
+Your brain is limited. I don’t mean any offence, you understand: your brain
+is a wonderful instrument, and it’s just as good as anyone else’s, or perhaps
+slightly better. But even the smartest brain can still only do one thing at
+once, despite our constant and ineffectual attempts to multi-task with it…
+…sorry, I was scrolling on my phone and lost the thread. But what if you
+could do two things at once, or even more? What would that feel like? What
+if you had two brains, for example? How would you organise them to work
+on independent tasks? And how would you stop them interfering with each
+other and making you very confused?
+Well, your computer does have two brains. Actually, mine has—checks
+notes—eighteen, though yours probably has more. And, even though I only
+have eighteen “processing units”, I can run a lot more than eighteen
+independent tasks: thousands, or even millions. How does that work? And
+how would you ever write a program like that?
+Understanding concurrencyWe’ve talked quite a bit in previous chapters about the careful way we need
+to organise access to shared data in concurrent systems such as the
+bookstore. But it’s all rather theoretical at the moment, since we haven’t
+actually written any concurrent programs (unless you count running tests in
+parallel).
+Let’s go into this subject in a little more detail now, and talk about what
+concurrency is and what problems it solves (or creates).
+Multi-tasking
+In the beginning, then, each computer could run one program at a time, and
+it ran from the beginning to the end and that was that. But the earliest
+computers were extremely expensive and, it turns out, they actually spent a
+lot of their valuable time idle, for one reason or another.
+For example, a typical task might be something like “read a few million
+data records from punched cards or paper tape, compute some statistics
+about them, and then write a report to a printer”. And, since physical
+peripherals such as card readers and printers work very slowly compared to
+the computer’s central processing unit (CPU) itself, a large part of the
+running time of this program would be spent doing nothing but waiting for
+these input / output (I/O) operations to finish. The actual computation part
+would be over in a flash, relatively speaking.
+It made financial as well as practical sense to come up with a scheme to
+increase the CPU’s duty cycle: the proportion of the total running time it
+spends doing useful work, as opposed to hanging around. Ideally, when the
+CPU has nothing to do for a while on the current task, it should work on
+some other task instead.
+One great way to get more compute for your money is multi-tasking:
+running more than one task at once. How might this work, then?
+Time-sharingThe simplest and most obvious multi-tasking scheme is time-sharing:
+maintain a queue of tasks, and give each task an equal chunk of time on the
+CPU. When its time is up, the task gets paused and added to the back of the
+queue, to eventually run again in its turn.
+We can implement this idea with a pleasantly simple scheduler program.
+The scheduler’s job is to figure out which task should run next. When its
+time slice has elapsed, a timer interrupt will pause the task, and invoke the
+scheduler again to pick the next one to run.
+The scheduler’s logic is something like this:
+1. Is there a queued task ready to run?
+2. If so, start it.
+3. If not, wait a while, and then go back to step 1.
+Such a round-robin algorithm is easy to implement, but not very efficient,
+because as we already saw, most tasks spend a lot of time blocked (that is,
+waiting) on I/O operations. We don’t take any account of this, so even
+though round-robining tasks reduces latency (average time to complete a
+task), it doesn’t make much improvement to throughput (number of tasks
+completed in a given time).
+In fact, throughput might even get worse, because multi-tasking naturally
+adds a scheduling overhead: the time that the CPU spends executing
+scheduler code, and switching between different tasks, as opposed to
+actually running task code.
+Can we do better?
+A co-operative scheduler
+One nice improvement to our simple scheduler would be co-operative
+multi-tasking: allowing a task to yield the CPU of its own accord when it
+doesn’t have any useful computation to do for a while (for example, if it
+just issued a request to read some data from disk).The scheduler program now gets a little more complicated, because it has
+two queues to maintain, not one. Let’s call them the “ready queue” and the
+“blocked queue”.
+The ready queue contains tasks that could use the CPU if it were available.
+When a new task is created (for example, when the user starts a program), it
+will first of all be added to the back of the ready queue.
+The blocked queue, on the other hand, contains tasks that have not yet
+completed, but have nothing useful to do on the CPU at the moment:
+they’re blocked. These tasks won’t be ready to run until some external
+event unblocks them: perhaps a timer elapses, or an in-progress I/O request
+completes. When this happens, the scheduler will move them to the ready
+queue.
+Meanwhile, the scheduler continues picking tasks from the ready queue and
+giving them CPU time. Once a task has run to completion, the scheduler
+can forget about it, freeing up the memory it was using to store the state of
+that task.
+Concurrent tasks
+You could see this scheme as implementing a little state machine, where
+any given task is always in one of three possible states:
+New tasks start their life in the ready queue. If a task is running, but
+becomes blocked, it moves to the blocked queue. When a blocked task
+becomes unblocked, it moves to the ready queue. When it reaches the front
+of the ready queue and a CPU is available, the task starts running. When a
+task completes, the next ready task is scheduled in its place.The scheduler’s task is to move each task from one state to the next as
+required. Indeed, the simpler the scheduler the better, because then we’re
+not wasting too much valuable CPU time on merely figuring out which task
+should run next.
+Concurrency is not parallelism
+We’ve been talking up to now about concurrent tasks sharing a single CPU,
+and so it’s clear (I hope) that these tasks are not executing in parallel—that
+is, simultaneously.
+We speak loosely as though concurrency and parallelism were the same
+thing, but they’re not. For example, I’m currently repainting the kitchen, but
+I’m concurrently writing this book. Obviously I’m not doing these things
+literally at the same time. But I’ve started both tasks, and finished neither of
+them, so they’re concurrent (“running together”).
+Now, if I were typing with one hand and wielding a paintbrush with the
+other, that would be parallelism (and it would probably also make a bit of a
+mess of both jobs). Fortunately, computers are better at this than we are,
+and are in practically no danger of getting paint all over themselves.
+Indeed, almost all modern computers have more than one CPU, and even
+individual CPUs are often split up into multiple execution cores or
+hardware threads, meaning that they can process several machine
+instructions at once.
+This multiprocessing (as opposed to multitasking) capability doesn’t change
+our scheduling setup as much as you might think. We can still use a single
+ready queue and a single blocked queue, but now more than one task can be
+in the running state at once. Whenever a CPU becomes free, the scheduler
+can assign it the next ready task, just as before.
+For better efficiency, as well as a global queue, we can also maintain local
+queues for each CPU, because it’s more expensive (that is, takes longer) to
+move a task from one CPU to another than it is to reschedule that task on
+the same CPU. A problem with multi-queueing is that one CPU could runout of work while others are still busy. To avoid this, a work-stealing
+scheduler can grab tasks from other CPU queues when necessary.
+Concurrency in Go
+This is roughly how most concurrent computer systems work, and you’ll be
+pleased to know that it’s the same in Go. When you compile and execute
+your program, what’s actually happening is that the Go runtime is
+scheduling a number of different goroutines—Go’s name for concurrent
+tasks—to make the best use of your CPU.
+If, as is likely, you have multiple CPUs, Go can schedule goroutines across
+all of them, and the runtime will use work stealing to keep all your cores as
+busy as possible. Thus, you can have concurrency and parallelism. Such
+fun!
+Goroutines
+You might be surprised to learn that, in fact, all your Go programs so far
+have been concurrent: they have multiple goroutines. At least one of them is
+executing the Go code you’ve written, such as reading and listing the book
+catalog. Others are doing housekeeping operations such as garbage
+collection: identifying and recycling bits of memory that are no longer
+required for your program.
+We can ignore these “background” goroutines for now, and we’ll focus only
+on the “main” goroutine: the one that executes your Go code. In this little
+example, let’s call it “goroutine A”:
+package main
+ 
+import "fmt" 
+ 
+func main() { 
+    for i := range 10 { (Listing hello/3)
+Ranging over integers
+This is a use of for ... range that we haven’t seen before. Previously,
+we’ve used the range keyword to create a loop that executes once for each
+element of a slice or map. Here, though, we have a loop that executes a
+fixed number of times (sometimes called “range over int”, since we use an
+integer as the argument to range).
+In this case, the loop executes 10 times:
+Each time round the loop, i takes on the next value, so it goes 0, 1, 2, 3… 9.
+Here’s the output:
+Hello from goroutine A! 0 
+Hello from goroutine A! 1 
+Hello from goroutine A! 2 
+Hello from goroutine A! 3 
+... 
+Hello from goroutine A! 9
+The go statement
+As we’ve seen, you get your first goroutine for free, just by running the
+program. But you can also create new goroutines yourself. The keyword to
+do this is easy to remember, because it’s the same as the name of the
+language: go.
+Let’s see what happens when we add another goroutine to our example,
+using a go statement:
+        fmt.Println("Hello from goroutine A!", i) 
+    } 
+}
+for i := range 10 {Here’s the go statement that creates a new goroutine:
+In Go, goroutines are function calls. So, to create one, we put the go
+keyword in front of a function call such as goroutineB().
+The goroutine that never was
+It looks as though this program will have two goroutines, A and B, each
+printing its own set of ten messages. What will we see when we run it? Will
+we see all of A’s messages, followed by all of B’s messages, or vice versa,
+or will we see them interleaved? Let’s find out:
+package main
+ 
+import ( 
+    "fmt" 
+) 
+ 
+func goroutineB() { 
+    for i := range 10 { 
+        fmt.Println("Hello from goroutine B!", i) 
+    } 
+} 
+ 
+func main() { 
+    go goroutineB() 
+    for i := range 10 { 
+        fmt.Println("Hello from goroutine A!", i) 
+    } 
+}
+go goroutineB()go run
+Hello from goroutine A! 0 
+Hello from goroutine A! 1 
+Hello from goroutine A! 2 
+Hello from goroutine A! 3 
+... 
+Hello from goroutine A! 9
+Well, that was weird! It looks like goroutine B didn’t run at all. Why not?
+Starvation
+Recall that we said goroutines can be in one of three states: running,
+blocked, or ready. So, at the beginning of main, there is only goroutine A,
+and not surprisingly it’s in the running state.
+Then we come to the go statement:
+This asks the scheduler to create a new goroutine whose task is to run the
+function goroutineB. But, since goroutine A is currently running, and
+doesn’t yet need to block for any reason, the go statement just causes the
+new goroutine to be added to the ready queue.
+Remember, the scheduler doesn’t even look at the ready queue unless the
+currently running goroutine either finishes or blocks for some reason. And
+goroutine A still has useful work to do, printing its ten messages.
+And when goroutine A reaches the end of its for loop, it then exits the main
+function, and that’s the end of the program! Poor goroutine B is still sitting
+in the ready queue, waiting for its chance to run, which will now never
+come (it has starved, in the jargon).
+New goroutines start in the ready queue
+go goroutineB()We’ve learned something useful and interesting about Go concurrency
+already. You might have thought that a program would wait until all its
+goroutines have run to completion, but that turns out not to be the case.
+Instead, the program exits as soon as some goroutine gets to the end of the 
+main function. If there are goroutines waiting in the ready and blocked
+queues, that’s too bad: they get terminated along with the rest of the
+program.
+If a running goroutine has useful work to do and it never blocks or
+deliberately yields the CPU, then no other goroutines will ever run. Go
+multitasking is solely co-operative, in other words (there are some minor
+footnotes to this, but we needn’t bother with them for now).
+You might perfectly well imagine that the go statement would pause the
+current goroutine and start the new one running straight away, but that turns
+out not to be the case either. Instead, the go statement merely adds the new
+task to the ready queue, to be run at some point in the future (if it ever gets
+the chance).
+You can think of the go keyword as meaning, not “run this now”, but “run
+this later… maybe!” In the meantime, the current goroutine continues
+executing as long as it can.
+Being the scheduler
+By the way, there’s a useful technique for figuring out why a concurrent
+program isn’t behaving the way you expected. I call it “being the
+scheduler”. Go through the code, as we’ve just done, asking yourself at
+every point what goroutines exist and what state each of them is in. Look
+for go statements creating new goroutines, and blocking operations that
+cause state transitions.
+If you do this carefully and methodically, you’ll be able to understand the
+behaviour of any concurrent program, and most importantly, its possible
+misbehaviour. For example, we diagnosed the problem with our “hello
+goroutine” program as one of starvation: even though we created goroutine
+B, it never had a chance to run before the program ended.Yielding with time.Sleep
+If we want to see evidence of both goroutines running, we need to make
+sure that each of them regularly yields the CPU, allowing the other to run.
+The simplest way to do that is to pause them using the time.Sleep function,
+from the time package:
+It doesn’t really matter how long we pause for: pausing for any time at all
+will block the goroutine and trigger the scheduler to run the next task in its
+ready queue.
+You might easily assume, when you see a statement like time.Sleep, that it
+would cause the current goroutine to stay on the CPU and wait, spinning its
+wheels, so to speak, until the desired time has elapsed. But that’s not
+actually what happens, because in a multi-tasking system, it would be a
+waste of CPU time.
+As long as there are other goroutines in the ready queue, meaning that they
+have useful work to do on the CPU, the scheduler can and will put them
+into action.
+Meanwhile, the goroutine calling time.Sleep will be parked: it joins the
+blocked queue and stays there until the timer expires. At that point it will go
+back into the ready queue.
+Interleaved goroutines
+Here’s what the program looks like with a time.Sleep added to each loop:
+time.Sleep(10 * time.Millisecond)
+package main
+ 
+import ( 
+    "fmt" (Listing hello/4)
+Let’s run it again:
+Hello from goroutine A! 0 
+Hello from goroutine B! 0 
+Hello from goroutine B! 1 
+Hello from goroutine A! 1 
+Hello from goroutine B! 2 
+Hello from goroutine A! 2 
+Hello from goroutine A! 3 
+Hello from goroutine B! 3 
+... 
+Hello from goroutine A! 9 
+Hello from goroutine B! 9
+That’s more like it. The messages from each goroutine are interleaved,
+showing that their execution overlaps. We can see from this output that
+    "time" 
+) 
+ 
+func goroutineB() { 
+    for i := range 10 { 
+        fmt.Println("Hello from goroutine B!", i) 
+        time.Sleep(10 * time.Millisecond) 
+    } 
+} 
+ 
+func main() { 
+    go goroutineB() 
+    for i := range 10 { 
+        fmt.Println("Hello from goroutine A!", i) 
+        time.Sleep(10 * time.Millisecond) 
+    } 
+}goroutine A runs a loop iteration or two, followed by goroutine B, then
+back to A for a bit, and so on.
+How long each goroutine runs in its turn on the CPU depends what other
+goroutines (such as the garbage collector) are doing, how busy your CPU is
+with other programs on your computer, and various other factors. We can’t
+know in advance exactly what the output of a program like this will be, only
+that the two goroutines will run concurrently.
+Data sharing and data races
+Being able to run two functions at the same time is neat, but not all that
+impressive: after all, you could already run two Go programs at the same
+time using the multitasking features provided by your operating system.
+The really useful thing about Go concurrency is that the goroutines in a
+single program can share data with each other. That’s because, as you
+already know, Go functions can access shared data, such as a package-level
+variable.
+A shared variable
+For example, let’s modify this program so that each goroutine prints the
+value of a shared package-level variable message:
+var message = "Hello" 
+ 
+func goroutineB() { 
+    for range 10 { 
+        fmt.Println(message, "from goroutine B!") 
+        time.Sleep(10 * time.Millisecond) 
+    } 
+} 
+ 
+func main() { (Listing hello/5)
+Here’s the output:
+Hello from goroutine A! 
+Hello from goroutine B! 
+Hello from goroutine B! 
+... 
+Hello from goroutine A!
+Racing goroutines
+Now that we have multiple goroutines accessing the same data, our safety
+antennae should be quivering about the possibility of a data race. So, does a
+data race exist in this program?
+In the previous chapter we saw that the requirements of a data race are,
+first, that multiple goroutines are accessing a variable, and second, that at
+least one of those accesses is a write. We’re safe for now, because all our
+accesses are reads; no writes.
+Let’s live a little dangerously, then. If we have one of our goroutines modify
+the message variable, then we should have a data race, according to the
+rules. We’ll change goroutine B as follows:
+    go goroutineB() 
+    for range 10 { 
+        fmt.Println(message, "from goroutine A!") 
+        time.Sleep(10 * time.Millisecond) 
+    } 
+}
+func goroutineB() { 
+    message = "Goodbye" 
+    for range 10 { 
+        fmt.Println(message, "from goroutine B!") (Listing hello/6)
+So, when goroutine B runs for the first time, it will set message to the string 
+"Goodbye". Let’s see what the output looks like:
+Hello from goroutine A! 
+Goodbye from goroutine B! 
+Goodbye from goroutine B! 
+Goodbye from goroutine A! 
+... 
+Goodbye from goroutine B!
+Fair enough. For a given iteration of goroutine A, then, will it print “Hello”
+or “Goodbye”? The answer is that we can’t know in advance, and that’s the
+significance of a data race. The output of goroutine A depends in this case
+on whether or not goroutine B has ever executed, and that in turn depends
+on what goroutine A does.
+Data races in concurrent systems
+What are the consequences of this kind of problem for our bookstore? Let’s
+suppose again that we have two point-of-sale terminals, both accessing the
+same book catalog concurrently. And let’s suppose that two customers are
+both trying to buy the last copy of the same book.
+We haven’t written a program to do this yet, but let’s imagine there’s a
+command called buy that, among other things, checks the stock level of the
+given book and decreases it by 1. If you try to buy abc when there are zero
+copies of book abc in stock, clearly that can’t succeed, so you get an error
+message saying “sorry, out of stock”.
+So, if there’s initially one copy of abc in the catalog, then what happens
+when customers A and B both concurrently try to buy it? In theory, one of
+them must win the race: if customer A is a microsecond ahead of customer
+        time.Sleep(10 * time.Millisecond) 
+    } 
+}B in placing their order, then they’ll get the last copy, and the second
+attempt to buy abc will fail because there are now zero copies left.
+But in practice, computer systems store temporary copies of data in cache
+memory, just as our Catalog stores a temporary copy of the book data
+represented by the disk file. In multi-CPU systems, each CPU has its own
+little chunk of cache containing a copy of the part of memory that the CPU
+is currently accessing. We can imagine that our bookstore terminals might
+use a similar kind of cache arrangement.
+For this scheme to work, changes to the cache have to be re-synced with the
+definitive data in memory every so often, just as we have to call Sync to
+reconcile the memory catalog with the disk catalog. But in the meantime,
+some other CPU might have also made changes to its own cached copy of
+the catalog.
+Double access problems
+Here’s what could happen with our duelling customers:
+1. Customer A runs buy abc, setting the number of copies of abc in its
+local cache of the catalog to zero. But customer B also has a cached
+version of the catalog that now disagrees with customer A’s version,
+because it still says there is one copy of abc, instead of zero.
+2. Concurrently, customer B runs buy abc. This succeeds because, as far
+as B’s cache is concerned, there’s still one copy of abc left in the
+catalog.
+3. Both customer A and customer B’s caches now agree again.
+Specifically, they agree that there should be zero copies of abc in the
+catalog, so there’s no conflict, and the system doesn’t detect any
+problem.
+4. But there is a problem! Only one of the two customers can walk out of
+the store with the book. Yet they’ve both bought and paid for it, and
+the bookstore system failed to prevent the same copy from being sold
+twice.What can we do about this?
+Detecting races
+Let’s write a Go program that demonstrates a simple version of the
+duelling-customers problem, and then we’ll see if we can detect and fix it.
+Clash of the customers
+We’ll represent each customer by a goroutine, and each goroutine will
+attempt to “buy” the same book by decrementing a shared copies variable:
+(Listing copies/1)
+Here, we’re setting up a variable copies, representing the number of copies
+of the book in stock. It starts at 1.
+func main() { 
+    copies := 1 
+    go func() { 
+        if copies > 0 { 
+            copies-- 
+            fmt.Println("Customer A got the book") 
+        } 
+    }() 
+    go func() { 
+        if copies > 0 { 
+            copies-- 
+            fmt.Println("Customer B got the book") 
+        } 
+    }() 
+    time.Sleep(time.Second) 
+}Next, we create two goroutines, representing customers A and B, each of
+which does the same thing: it checks to see if copies is greater than zero,
+and if so, it “buys” the book by setting copies to zero and printing a
+message saying which customer got it.
+In total, then, we have three goroutines now, including the main goroutine,
+which does nothing but call time.Sleep, to give the two “customer”
+goroutines a chance to run, and to make sure the program doesn’t end too
+soon.
+Anonymous function literals
+There’s a couple of new pieces of syntax here. Instead of using the go
+statement to call some named function in a new goroutine, we give it what’s
+called a function literal:
+This is exactly equivalent to defining the same function with a name, as
+we’ve done before, and calling it in the go statement:
+It’s usually a little easier to see what’s going on if we put the goroutine code
+directly in a function literal, rather than abstracting it out into a named
+function. And since this function has no name, it’s sometimes called an
+anonymous function literal, or, in the jargon, a closure.
+Increment and decrement statements
+Here’s another new Go construct: a decrement statement. Each of the two
+goroutines does this:
+go func() { ... }()
+func customerB() { ... } 
+... 
+go customerB()The -- operator in the decrement statement subtracts 1 from the value of the
+variable it’s applied to. It’s a shorter way of writing the exactly equivalent:
+Or even:
+There is, naturally, enough, a corresponding increment statement, using ++,
+which we would write like this:
+Demonstrating the race
+When this program runs, then, the two customer goroutines should both get
+a chance to run, and they will race each other for access to copies.
+Sometimes customer A will get there first, and at other times, customer B:
+the result should be more or less random.
+Let’s see what happens when we run this program ten times in a row, then:
+Customer B got the book 
+Customer A got the book 
+Customer A got the book 
+Customer B got the book 
+Customer A got the book 
+Customer B got the book 
+Customer B got the book 
+Customer B got the book 
+Customer A got the book 
+Customer A got the book
+copies--
+copies = copies - 1
+copies -= 1
+copies++We already knew that a data race is present here in theory, because there are
+multiple goroutines accessing the same variable, and at least one of those
+accesses is a write. But now we’ve demonstrated the race in practice: we
+can’t tell in advance whether customer A or B will get the book. The
+outcome of the program is non-deterministic, in other words.
+And we know that in a more realistic simulation of a multi-user system that
+includes cacheing, a data race means that we can get undesirable results
+such as both customers apparently purchasing the same copy.
+Go’s race detector
+Go has a useful tool to help us here, called the race detector. If we use the -
+race flag with the go command, the Go runtime will use the race detector to
+find and report any data races in the program.
+We feel it should report one here, so let’s find out:
+go run -race main.go
+Customer B got the book 
+================== 
+WARNING: DATA RACE 
+Read at 0x00c000090038 by goroutine 6: 
+  main.main.func1() 
+      .../love/copies/1/main.go:11 +0x2c 
+ 
+Previous write at 0x00c000090038 by goroutine 7: 
+  main.main.func2() 
+      .../love/copies/1/main.go:18 +0x50 
+ 
+Goroutine 6 (running) created at: 
+  main.main() 
+      .../love/copies/1/main.go:10 +0xa0 
+ 
+Goroutine 7 (running) created at: 
+  main.main() 
+      .../love/copies/1/main.go:16 +0x104 
+================== 
+Found 1 data race(s) 
+exit status 66Understanding the output
+We know from the definition of a data race that there must be at least one
+write to the variable and at least one other conflicting access, and indeed
+that’s the case. Here’s where the write occurs:
+Previous write... by goroutine 7: 
+  main.main.func2() 
+      .../love/copies/1/main.go:18
+That’s referring to this line in the customer B goroutine (“goroutine 7”,
+according to the arbitrary numbering scheme used by the runtime):
+Customer B is trying to decrement copies, thus updating the value of the
+variable, but this is conflicting with a concurrent read by the customer A
+goroutine (“goroutine 6”):
+Read... by goroutine 6: 
+  main.main.func1() 
+      .../love/copies/1/main.go:11
+That refers to this line in the customer A goroutine:
+So, customer A is trying to read the variable, while customer B is
+concurrently trying to write to it. Go has successfully detected the data race
+in this program. It’s a good idea to always use the -race flag when you test
+programs with multiple goroutines, just to make sure you haven’t missed
+any potential races.
+If the race detector is so super-terrific, you might ask, then why isn’t it just
+turned on all the time? The answer is that it works by adding
+instrumentation to every piece of data in your program to check if it’s being
+accessed concurrently. Those checks slow down the program a lot, so we
+copies--
+if copies > 0 {wouldn’t want them enabled when running the program for real, but they
+remain very useful for testing.
+Mutual exclusion and locking
+In the previous chapter we explored one way of preventing data races, by
+using a mutex. Let’s see if that helps here, too.
+Adding a mutex
+Here’s an updated version of our example program, this time with a 
+sync.Mutex which we’ll use to protect the copies variable from concurrent
+access:
+func main() { 
+    var mu sync.Mutex 
+    copies := 1 
+    go func() { 
+        mu.Lock() 
+        defer mu.Unlock() 
+        if copies > 0 { 
+            copies-- 
+            fmt.Println("Customer A got the book") 
+        } 
+    }() 
+    go func() { 
+        mu.Lock() 
+        defer mu.Unlock() 
+        if copies > 0 { 
+            copies-- 
+            fmt.Println("Customer B got the book") 
+        } 
+    }() (Listing copies/2)
+The “lock, defer unlock” pattern
+Everything is the same as before except that now we have an extra variable 
+mu, the mutex. Here’s the customer A goroutine (customer B’s is identical
+except for the printed message):
+If the mutex scheme is going to work, then each goroutine has to obtain the
+lock before trying to read the copies variable. That’s what mu.Lock() does.
+If the lock is available, great: we’ll obtain it and proceed straight away. If
+it’s in use by someone else, the call to mu.Lock() will wait until it’s released
+(that is, the calling goroutine will move to the blocked queue until the lock
+becomes available).
+Once the goroutine has got the lock (and made it back to the front of the
+ready queue, if it had to wait in the meantime), it can proceed. We then 
+defer the call to mu.Unlock(), ensuring that whatever happens in this
+goroutine, we release the lock when the function exits.
+Taking the token
+The sequence of events for each goroutine will be:
+    time.Sleep(time.Second) 
+}
+mu.Lock() 
+defer mu.Unlock() 
+if copies > 0 { 
+    copies--
+    fmt.Println("Customer A got the book") 
+}1. Obtain lock (blocking if necessary).
+2. Read copies.
+3. If the book is still available, set copies to zero.
+4. Release lock.
+This time, at step 3, the book can only be available to exactly one of the
+goroutines. The two critical sections (steps 2-3 in each goroutine) can no
+longer overlap: that’s what the mutex prevents.
+It’s a little like a single-track railway line, where only one train can safely
+occupy a given section of line at a time. If two trains try to share it,
+especially when they’re travelling in opposite directions, it’s usually a bad
+day for everyone concerned. To prevent this, we need a way to enforce
+mutual exclusion of trains in each block (the equivalent of our critical
+section).
+One typical scheme relies on a physical token that the train driver has to
+obtain before entering the block. On reaching the other end of the block, the
+driver hands the token back to a signaller, so that it can be used by the next
+train, and so on. Mechanical interlocking prevents the points and signals
+being set for any train movement until the corresponding token is in place.
+The mutex in our example program is the digital equivalent of the token:
+each goroutine must wait until the token is available, signalling that it can
+enter the critical section. Once it leaves, it gives up the token so that other
+goroutines can use it to enter their own critical sections.
+A race-free program with locking
+In our book example, the critical section starts where the goroutine reads 
+copies, and ends after it (optionally) writes to the same variable. So, before
+the goroutine enters this section, it must obtain the “token”, by calling 
+mu.Lock(). After it leaves, it gives up the token by calling mu.Unlock() (via
+a defer statement).
+One of two things has to happen, then: either the customer A routine gets
+the lock first and updates copies, meaning that customer B misses out, or
+the customer B goroutine gets the lock first, and customer A misses out.Access to the copies variable is guaranteed by the lock to be mutually
+exclusive, eliminating the data race. Let’s see if the race detector agrees:
+go run -race main.go
+Customer B got the book
+No data race warning. That’s great! It looks like we can fix the books
+package using a mutex to prevent data races. Let’s go ahead and make this
+upgrade in the next chapter.
+Here’s what we know so far
+In this chapter we’ve talked about some simple multi-tasking and
+scheduling algorithms, and seen how these inform the design of Go’s
+scheduler. You know how to use the go keyword to create and schedule new
+goroutines, which are concurrent tasks executing Go functions.
+You’ve written some simple programs involving multiple goroutines, and
+seen how they move between ready, running, and blocked states, by means
+of the scheduler. You can reason about the behaviour of concurrent
+programs and how data races arise when goroutines share access to
+variables.
+You also learned how to use a sync.Mutex to protect a shared variable from
+concurrent access, and how to obtain and release the lock in goroutines.

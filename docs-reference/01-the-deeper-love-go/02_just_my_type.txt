@@ -1,0 +1,339 @@
+2. Just my type
+In the previous chapter we did some interesting things with string data, but
+is that the only kind of data we can use in a program? Certainly not. There
+are all sorts of other kinds of data we can work with. For example, numbers.
+New data types
+A well-stocked bookstore will certainly contain more than one copy of
+some books, so perhaps we’d like to keep track of that information, too. As
+with the title and author, we could store this in a variable:
+You don’t need to type this in, by the way; it’s just an example to illustrate
+what I mean.
+Numeric data
+Notice that there are no quotes around the value 15. That’s because this isn’t
+a piece of text: it’s not the string "15", it’s the number 15.
+var title = "Killers of the Flower Moon" 
+var author = "David Grann" 
+var copies = 15Go considers these as two distinct kinds of information: two distinct data
+types. The value "David Grann" is a string literal; 15 is called an integer
+literal (more about integers in a moment).
+If we had a copies variable in our printBook function, we’d be able to
+include it when we print out the book information, by writing something
+like this:
+The output would be, for example:
+Killers of the Flower Moon by David Grann - 15 copies
+Great! We should be able to cope with any sudden surge in demand for this
+excellent book.
+Parameter types
+Now that we know how useful abstractions are, we’d like to add this new
+piece of data to our printBook function. Here’s the current declaration of 
+printBook, showing the parameters it can take:
+We can add copies to this list of parameters, but we also have to tell Go
+what data type it is. It’s not a string, so we can’t say string. What should
+we put here?
+The int type
+In fact, Go has more than one built-in data type for dealing with numbers.
+The most commonly used one is called int, short for “integer”. The integers
+(Latin for “whole”) are, as you probably know, the whole numbers.
+Let’s declare copies as a parameter of type int:
+fmt.Println(title, "by", author, "-", copies, "copies")
+func printBook(title, author string)(Listing books/6)
+Now all we have to do is remember to add the copies information each time
+we call printBook in our main function:
+(Listing books/6)
+We’ve imagined a variable (or, equivalently, a function parameter) as being
+like a little box that you put different data values into, and the box has a
+name on it (for example, copies). Now we know that the box also has a
+label on it identifying what kind of data it can hold: for example, string or 
+int.
+Variable declarations
+Each time we’ve created a new variable, such as title, we declared its
+name and assigned its value in a single statement, like this:
+func printBook(title, author string, copies int) { 
+    fmt.Println(title, "by", author, "-", copies, "copies") 
+}
+func main() { 
+    fmt.Println("Books in stock:") 
+    var title = "The City & The City" 
+    var author = "China Miéville" 
+    var copies = 1 
+    printBook(title, author, copies) 
+    title = "The Sugar Barons" 
+    author = "Matthew Parker" 
+    copies = 2 
+    printBook(title, author, copies) 
+}That’s convenient, but we can also declare the variable without explicitly
+giving it a value:
+Notice that we have to tell Go what type the new variable is here (string).
+We didn’t have to say that when we assigned a value, because Go is smart
+enough to work out what the type must be, based on that value.
+Here, there’s no such clue, so we have to state the type explicitly: string.
+Or, if we wanted to declare an integer variable, we’d say int:
+Later, we can assign a value to our new variable with an assignment
+statement of the kind you’ve already seen:
+Zero values and default values
+You might have wondered what happens if we declare a new variable using
+the var keyword, but then try to refer to it before we’ve actually assigned
+any value to it. What happens when we try to print the variable, for
+example?
+Let’s see:
+var title = "The City & The City"
+var title string
+var copies int
+title = "The City & The City" 
+copies = 1
+var x int 
+fmt.Println(x)How interesting! It turns out the variable has a default value, known as the
+zero value, which is what it will contain before we explicitly put anything in
+it. What that value actually is depends on the type.
+To put it another way, when you ask Go for a new box, the box doesn’t
+arrive empty. You get a free gift inside it: a copy of the zero value for that
+type of box. For int, the zero value is indeed zero, which makes sense, but
+what about other types?
+The zero value for string is the empty string, "", which also seems
+reasonable. Check this for yourself:
+No output, but that’s what we’d expect: the string s is empty, so there’s
+nothing to print.
+By the way, any time you have a question about Go syntax, or what some
+snippet of code will do, you don’t have to go through the process of
+creating a new project, compiling, and running it on your computer. There’s
+an online Go Playground where you can experiment with programs using
+just a web browser; you don’t even need to have Go installed. Try it!
+Type checking
+What’s the point of having types, then? Well, I’m glad you asked.
+In theory, we could store all information as strings, but then we could easily
+get mixed up between one variable and another. The type system helps
+// Output: 
+// 0
+var s string 
+fmt.Println(s)
+// Output: 
+//catch mistakes like this, because Go provides type checking for us: it won’t
+let us assign values of one type to variables of another type, for example.
+Type mismatch errors
+What happens if we try to put a value of one type into a box that’s defined
+to hold a different type? Presumably that won’t work, but let’s see what
+happens.
+At the risk of making Go angry, we’ll try to put an int value into a string
+variable, and vice versa:
+As expected, we get some errors on trying to run this program:
+cannot use 42 (untyped int constant) as string value in assignment 
+cannot use "None" (untyped string constant) as int value in 
+assignment
+Ignoring the stuff about “untyped constants” for now, this means,
+effectively:
+cannot put an 'int' value into a box marked 'string' 
+cannot put a 'string' value into a box marked 'int'
+And that makes sense. Even if we could do this kind of thing, it would be a
+bad idea. With data, there’s a place for everything, and everything should be
+in its place. If you put salt in the pepper grinder and pepper in the salt
+shaker, it will confuse and annoy your dinner guests, and they probably
+won’t come again.
+A plausible bug
+Type checking is useful for when we make genuine mistakes, not just when
+we’re playing practical jokes on Go like this. For example, we might forget
+title = 42 
+copies = "None"the correct order of arguments to the printBook function, and mix them up,
+something like this:
+This is the sort of bug (mistake) that happens all the time in programming,
+so it’s handy that Go can spot it for us and report the problem:
+cannot use copies (variable of type int) as string value...
+We’re not really trying to use an int as a string value, but Go doesn’t know
+that. It can’t say “Hey, you dummy, you got your arguments in the wrong
+order,” even though that’s the true source of the problem. But it can at least
+report that there must be something amiss.
+Structured data
+We’re making progress towards our bookstore application. We’ve now
+figured out how to store various bits of data about a book in variables, using
+the appropriate type for each one: string for the title and author, int for the
+number of copies in stock.
+We’ll probably need to store several more pieces of data about each book in
+the finished program. For example, we might want to know the book’s
+ISBN number, publisher, year of publication, and so on. We’d certainly like
+to be able to store its price, and perhaps a brief description of its contents,
+even a cover image.
+That’s a lot of variables for one book! It’s already a little inconvenient to
+use a function such as printBook, because we have to pass each variable as
+a separate argument: title, copies, author, and perhaps more in the future.
+Introducing structs
+Ideally, since all these variables relate to a single book, we’d like to be able
+to group them together into one variable. Not just that, but we’d like to
+printBook(title, copies, author)maintain the structure of that variable: the fact that there’s a string
+containing the book’s title, another string containing its author, and an
+integer number of copies. Then we could retrieve any of those bits of
+information individually when we want them, while still having the
+convenience of passing a single value to a function that deals with books.
+Fortunately, Go has a kind of data type that works exactly this way. It’s
+called a struct (as in “structured data”). Let’s see how to use it.
+Declaring a new struct type
+We want to create a struct type that stores data about a book, and we can do
+that with a type declaration like this:
+The type keyword introduces a new type, and the name Book is what we’re
+going to call it. Then, the keyword struct tells Go that this is going to be a
+structured type, which means the next thing we need to do is list the
+individual fields—the variables that make up our book information.
+The opening curly brace { prefaces the list of fields, just as it marks the start
+of the function body when we’re declaring a new function. Generally in Go,
+an opening curly brace means “Here comes some stuff”, and the
+corresponding closing brace means “That’s the end of that stuff”:
+type Book struct { 
+    Title  string 
+    Author string 
+    Copies int 
+}
+type Book struct { // here come some fields... 
+    Title  string 
+    Author string 
+    Copies int 
+} // ...that's the end of those fieldsWithin the block of code marked by the opening and closing braces, we list
+each field, giving its name (for example Title) and the type of data it stores
+(for example string). They can all be different types, and there can be as
+many fields as we want, but we only need these three for now.
+Great, so we created a new struct type named Book, but what now? How do
+we actually use it?
+Struct variables and values
+Well, the first thing we should do is declare a new variable of this type:
+Just as we previously declared new variables of type string or int, which
+are built-in types, we can use our newly-defined Book type to create a
+variable in the same way. Now let’s assign it a value:
+Combining declaration and assignment
+Again, this assignment statement works exactly like the previous ones
+we’ve written: there’s the name of a variable (book) on the left-hand side of
+the = sign, and a literal value on the right-hand side. In fact, we could also
+have written this in a single step, declaring and assigning in the same
+statement:
+var book Book
+book = Book{ 
+    Title:  "Sea Room", 
+    Author: "Adam Nicolson", 
+    Copies: 2, 
+}Notice that we now don’t have to mention the type of variable that book
+should be. Go is smart enough to infer it, because the only type of variable
+you could assign a Book value to would be a Book variable. Why repeat
+yourself if you don’t have to?
+It’s so common to combine variable declaration and assignment in Go
+programs that we have an even more concise way to write the same thing:
+Notice that the var keyword disappeared altogether, and instead of the =
+sign (“is assigned the value”), we have the strange-looking := sequence (“is
+implicitly declared and assigned the value”). This “colon-equals” syntax is
+technically known as the short declaration form, but I’ve also heard it
+called the “walrus operator” (try looking at it sideways).
+The short declaration form is common in Go code, so we’ll use it instead of 
+var from now on.
+Struct literals
+We know what string and integer literals look like, because we’ve used
+them before, but we have something new here: a struct literal. Specifically,
+a Book literal:
+var book = Book{ 
+    Title:  "Sea Room", 
+    Author: "Adam Nicolson", 
+    Copies: 2, 
+}
+book := Book{
+    Title:  "Sea Room", 
+    Author: "Adam Nicolson", 
+    Copies: 2, 
+}We write that, as you see, by first of all giving the name of the type (Book),
+then using an opening curly brace: here comes the stuff. Namely, a list of
+elements: that is, individual bits of data.
+In a struct literal, each element is a key-value pair: the name of some field
+(for example Title), followed by a colon, followed by the value we want to
+assign to that field (for example "Sea Room"), and finally a trailing comma.
+Perhaps it doesn’t really seem like all this gains us that much. I mean, we
+started out with three separate variables, and now we have one variable with
+three separate fields. What’s the difference?
+The main reason for grouping data values together into a struct is that it
+makes them easier to pass around (for example, to a function such as 
+printBook). We get the convenience of having the book information in a
+single variable, but we also keep the flexibility of being able to access any
+of the individual fields by name when we want to:
+Accessing struct fields
+Notice that we use the name book.Title to refer to this field (pronounced
+“book dot Title” when we’re reading out loud).
+It’s not enough to say Title alone, because there could be lots of different 
+Book variables: which one do we mean? We have to identify the specific
+Book{ 
+    Title:  "Sea Room", 
+    Author: "Adam Nicolson", 
+    Copies: 2, 
+}
+fmt.Println(book.Title) 
+// Output: 
+// Sea Roombook first of all (book), then the field name prefixed by a period (.Title).
+Together, the two things identify a specific field on a specific Book variable.
+Similarly, we can assign a new value to a struct field if we want to:
+And because a struct is essentially a bunch of variables glued together, we
+can use those struct fields anywhere that we could use an individual
+variable:
+That’s nice, but we can do better! Now that we can treat these pieces of
+book data as a single value, we could change our printBook to take one
+parameter, instead of three. Can you work out how to do that?
+Struct parameters
+GOAL: Modify the printBook function so that it takes a single parameter
+representing all the information about a specific book. Try out the new
+function and make sure it prints the same output as before.
+HINT: Well, you know how to declare a variable of type Book, so what
+about a function parameter? That works pretty much the same way, it turns
+out. See if you can guess what the syntax needs to be.
+Once you have that parameter, you refer to its individual fields using the dot
+notation we saw in the previous example: first comes the name of the
+parameter, then a period, then the name of the field we want.
+SOLUTION: Here’s one way we could write printBook:
+book.Copies = 1
+printBook(book.Title, book.Author, book.Copies)(Listing books/7)
+Let’s try it out:
+(Listing books/7)
+Pretty neat! This not only makes it easier and less verbose to call printBook,
+and simplifies the function declaration, it’s also a kind of future-proofing.
+As we add more fields to the Book struct in the future, we won’t need to
+modify every place in the program where we call printBook; instead, we
+need only update the function itself.
+Even when we change the details of the Book struct in some way, such as
+adding a field, our calling code can stay exactly the same:
+func printBook(book Book) { 
+    fmt.Println(book.Title, "by", book.Author, "-", book.Copies, 
+"copies") 
+}
+fmt.Println("Books in stock:") 
+book := Book{
+    Title:  "Sea Room", 
+    Author: "Adam Nicolson", 
+    Copies: 2, 
+} 
+printBook(book) 
+// Output: 
+// Sea Room by Adam Nicolson - 2 copies
+printBook(book)The code of printBook will probably need to change, naturally, but that only
+occurs in one place, so it’s a lot easier to find and update.
+In fact, let’s make a change now, just for fun. The fmt.Println function, as
+you probably noticed, prints all its arguments, separated by spaces. This is
+fine, but it’s not always easy to see exactly what the result will look like,
+especially when there are lots of arguments.
+It would be more convenient if we could specify a format string: a kind of
+template string containing the literal text we want (“by”, “copies”), but also
+placeholders showing where the data value would go.
+For example, suppose we used %v as a placeholder for values, we could
+write a format string like this:
+Now we also need to supply the data, and since there are three %v
+placeholders, we need three pieces of data to fill them: book.Title, 
+book.Author, and book.Copies.
+So, fmt.Println has a companion function that works exactly like this: 
+fmt.Printf. It takes a format string, possibly containing placeholders, and
+then as many pieces of data as needed to fill the placeholders (if any). Our
+example would look like this:
+Note that Printf, unlike Println, doesn’t automatically add a newline
+character to the end of our string. We can supply one, though, by including
+the sequence \n (for “newline”) in the format string.
+Formatted printing like this is extremely useful. Since there could be a lot
+of data, and the format string could be very long, this is a more flexible and
+friendly way of printing than fmt.Println provides.
+"%v by %v - %v copies"
+fmt.Printf("%v by %v - %v copies\n", book.Title, book.Author, 
+book.Copies)Here’s what we know so far
+Now you know about some new types, including int, and struct types that
+combine different kinds of data into a single record. You’ve learned how to
+declare and assign variables in one statement, using the short declaration
+form, and you also know how to write functions that take structs as
+parameters, and access the data in individual fields.
+Great job! In the next chapter, we’ll continue our data-mangling activities,
+and in particular we’ll see how to test functions that process data in various
+ways.

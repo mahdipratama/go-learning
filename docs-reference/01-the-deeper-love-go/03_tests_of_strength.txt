@@ -1,0 +1,617 @@
+3. Tests of strength
+Creating abstractions, such as the printBook function, or the Book struct
+type, is a useful way to organise our programs and make them easier to
+understand. We don’t have to write lots of duplicated code, and if we want
+to change the way something works, we can do it in just one place.
+This makes maintenance easier, and you’ll find that as a software engineer
+you spend far more of your time updating and fixing existing code than you
+do on writing brand new code. And we’ve proved this already: we’ve made
+several changes to the printBook function, for example, as our requirements
+evolved.
+Self-testing code
+The first time we write a piece of code, we can usually tell whether or not
+we’ve got it right: run the program and make sure it works. But as soon as
+we start making changes, this testing process gets harder.
+What does “it works” mean?
+For one thing, it’s not always clear what “it works” means. Even if the
+program doesn’t crash, or report an error, or behave weirdly, it might be
+incorrect all the same. For example, we might have forgotten to print outthe Copies field as part of the book information. That’s a bug, but it would
+still look as though the program “works”—it just doesn’t print everything
+it’s supposed to.
+Or suppose we make some minor change to the printBook function that,
+unexpectedly and by mistake, causes it to stop printing out the Copies
+information. We might run the program once or twice and think everything
+is fine. We weren’t expecting the copies information to disappear, so we
+weren’t specifically looking for it.
+So, while manual testing—running the program and looking for anything
+weird—has some value, we’d like to have a more rigorous and less labour-
+intensive way of checking for bugs.
+Really, the ideal thing would be for the program to be able to test itself.
+How would that work?
+How could we test this?
+Well, suppose we wanted to test the printBook function manually. What
+would we do? We might write a short program that creates a Book value and
+passes it to printBook. Then we could run the program and check that it
+produces the expected output.
+With one or two small changes, we can automate this process to create what
+we want: self-testing code. For example, suppose we wrote a function 
+testPrintBook that calls printBook and checks its result. If we had such a
+function, we could call it from the program’s main function before doing
+anything else, and if it detected a problem, it could terminate the program.
+But what do we mean here by “checks its result”? How does printBook
+behave when it’s working correctly? Well, it prints the given Book
+information to the terminal, in a certain specified format.
+That’s awkward to test, because printing is a one-way process: we can call 
+fmt.Printf or fmt.Println to print something, but there’s no corresponding
+function we can call to ask what was printed.Designing for testability
+Instead, let’s re-jig the behaviour of printBook a bit. What if we changed 
+printBook so that, instead of printing the Book data, it just returned a
+suitably-formatted string? Then we could always print that if we wanted to.
+In the test, we won’t need to: we’ll compare it with the string we expect.
+So, let’s rename printBook to something like BookToString, and have it
+return a string instead of printing anything. We won’t make any code
+changes yet; let’s finish writing the test function first.
+The tools we need
+The plan is coming together, but we still need a couple more pieces. We
+need a way to compare two values, and we also need a way to exit the
+program if the comparison fails.
+Conditional statements
+Actually, when you think about it, the word “if” is doing a lot of work in
+that sentence, because it implies that for the first time our program could
+take one of two possible paths, depending on some condition. That may
+seem straightforward, but it represents quite a leap in our ability to write
+useful programs, and this important idea has a name: the conditional
+statement.
+A conditional statement, as the name suggests, lets us make the execution
+of some part of the code conditional on the value of some expression. If the
+expression is true, the code is executed, and you may be pleased to learn
+that the keyword Go uses for this is if:
+if x == 1 { 
+    fmt.Println("Looks like x is 1!") 
+}Notice that, again, curly braces are used to indicate “here comes some
+stuff”: in this case, the block of code to be executed if the condition is true.
+Comparison operators
+There’s another new piece of syntax here, too: the comparison operator ==.
+Not to be confused with the single = sign that assigns a value to a variable,
+the == operator means “is equal to”.
+We can now conditionally execute some code if two values are equal, but
+that’s not quite what we need for the test. We want to do something (report
+a test failure, for example) if the values are not equal, which is the opposite.
+Here’s what that looks like:
+The != operator, pronounced “not equals”, or “not equal to”, is just what
+we’ll want to use to fail the test if BookToString returns something
+unexpected.
+The panic function
+We now have nearly all the pieces we need to construct a useful self-test
+function for BookToString. Here’s the plan: we’ll create a Book variable
+containing details about some book, we’ll pass it to BookToString, and then
+we’ll compare the result to some expected value using if and !=.
+If the result is different to what we expect, we’ll stop the program with an
+error message to indicate that something’s gone wrong. To do this, we can
+use the built-in function panic:
+if x != 1 { 
+    fmt.Println("Looks like x is NOT equal to 1!") 
+}
+panic("Looks like x is NOT equal to 1!")The quaintly-named panic does exactly what we need here: it prints the
+given message to the terminal and immediately exits the program. So, if the
+self-test fails, we won’t proceed to the normal operation of the program,
+because we’ll know that the code is faulty and shouldn’t be used until it’s
+fixed.
+Writing the test
+Let’s write the test function, then:
+(Listing books/8)
+This is the most complicated function we’ve written so far, but if you read
+through it carefully, line by line, what it’s doing is straightforward. It’s
+exactly what we planned.
+Breaking it down
+We create a Book variable (here named input)—remember the short
+declaration form using :=? Then we pass the value of that variable to the 
+func TestBookToString_FormatsBookInfoAsString() { 
+    input := Book{ 
+        Title:  "Sea Room", 
+        Author: "Adam Nicolson", 
+        Copies: 2, 
+    } 
+    want := "Sea Room by Adam Nicolson - 2 copies" 
+    got := BookToString(input) 
+    if want != got { 
+        panic("BookToString: wrong result") 
+    } 
+}BookToString function, and assign the result of that function to a variable
+named got.
+We then compare got with another variable we prepared earlier, want, which
+is a string that represents what BookToString should return if it’s working
+correctly. Using an if statement and the != comparison operator, we call the
+panic function if want and got contain different strings.
+There’s one other thing about this test function that’s worth looking at: its
+name!
+TestBookToString_FormatsBookInfoAsString
+What does this mean? It’s telling us what the test is testing: that 
+BookToString formats book info as a string. That might sound obvious,
+given the name of the function. Fine. Apparently we’ve picked a good name
+for the function: we want its purpose to be clear from the name.
+And it’s the same for this test function. We could have named it 
+TestBookToString, or something like that, and it is at least clear which
+function is being tested. But it’s not clear what we’re testing about it.
+The extra words in the name make that explicit: we’re testing that it does,
+indeed, format the given book info as a string (and the test code also shows
+exactly what that format is supposed to be).
+Very promising! There’s only one problem: we haven’t actually written the 
+BookToString function yet. Let’s tackle that next.
+In fact, let’s again break down the problem into smaller stages. Logically, if 
+BookToString contains a bug, we want the test function to panic and stop the
+program. But how do we know that will actually happen? After all, there
+might be a bug in the test function too!
+To validate the test function, we should first write a version of 
+BookToString that we know is incorrect, and make sure that the test function
+detects that fact. If it doesn’t, we have a problem with the test.On the other hand, assuming the test does detect the bug, then we can have
+some confidence in the correctness of our test, and we can go ahead and
+write the real version of BookToString which (we hope) will actually work.
+Results and return statements
+We’ll start with the buggy version first. We already know that we need to
+change the function’s name, and declare that it now returns a string result
+instead of nothing. So here’s another new piece of syntax:
+Recall that when we declare a function using the func keyword, we have to
+list all the parameters it takes inside a pair of parentheses after the function
+name. If the function returns any results, we have to list them after the
+closing parenthesis, but before the opening curly brace marking the start of
+the function body.
+Here, we’re saying that the BookToString function returns one result, of
+type string—which makes sense. Notice that, while we have to specify the
+type of the result, we don’t need to give it a name.
+Up to now, none of the functions we’ve written actually returned any
+results. Now we need to do that, and merely declaring in its signature that
+the function will return a result isn’t quite enough. To actually return
+something, we have to write a return statement:
+A return statement causes the function to stop executing at that line, and
+pass the specified value back to its caller. Often this is the last line in the
+function, but it needn’t be—a function can have more than one return
+statement and they can occur anywhere in the function body.
+func BookToString(book Book) string {
+func BookToString(book Book) string { 
+    return ""
+}So, what are we returning in this case? It’s the empty string, "". That’s
+obviously incorrect, because it ignores the book information supplied in 
+book, and always returns the empty string no matter what. But that’s what
+we wanted: a version of BookToString that we know in advance won’t work.
+Silly, perhaps, but you get the point: if the test function doesn’t detect this
+bug, what bugs would it detect? We’ll start there.
+Running the test
+To enable our new test machinery, let’s replace our existing main function
+with one that (for the moment) calls the test function:
+When we run this program, it will print one of two possible messages. If the
+test fails (that is, if the test succeeds in detecting our deliberate bug), then it
+will print the panic message. Otherwise, it will print “It’s all good!”
+Let’s see what happens:
+go run main.go
+panic: BookToString: wrong result
+There follows more output, which is intended to help us diagnose the panic
+problem, but we don’t need that in this case, because we know exactly
+what’s wrong. BookToString is returning the wrong answer, and our test
+detected that fact. Excellent!
+Let’s go ahead and write a better version of BookToString, then, and we’ll
+use the test to check whether or not we got it right. Here’s the old function
+we had before:
+func main() { 
+    TestBookToString_FormatsBookInfoAsString() 
+    fmt.Println("It's all good!") 
+}Previously, we relied on fmt.Printf to do both the string formatting and the
+printing. We still need the formatting behaviour, but now we want to get the
+result as a string, without printing it.
+The fmt.Sprintf function
+There’s another function in the fmt package to do exactly that: fmt.Sprintf.
+Just like Printf, it takes a format string with placeholders, plus the data, but
+it doesn’t print anything. It creates a string with the format we asked for.
+We could write something like this:
+Or more concisely, dispensing with the unnecessary result variable:
+(Listing books/8)
+Let’s run the program again now and see if the self-test passes:
+func printBook(book Book) { 
+    fmt.Printf("%v by %v - %v copies", 
+        book.Title, book.Author, book.Copies) 
+}
+func BookToString(book Book) string { 
+    result := fmt.Sprintf("%v by %v - %v copies", 
+        book.Title, book.Author, book.Copies) 
+    return result 
+}
+func BookToString(book Book) string { 
+    return fmt.Sprintf("%v by %v - %v copies", 
+        book.Title, book.Author, book.Copies) 
+}go run main.go
+It's all good!
+Excellent news. And we can imagine writing other tests for other functions
+that might be in our program. It’s very reassuring to know that if we ever
+accidentally introduce a mistake into the code somewhere, the self-test
+system will catch it and let us know.
+The testing package
+It’s so common and useful to write self-test functions like this that Go
+actually provides some built-in facilities to help us. Let’s see how to use
+them.
+Declaring a test
+First, to keep things tidy, we’ll move our test function to a separate source
+file, main_test.go, and make a few small tweaks:
+package main
+ 
+import "testing" 
+ 
+func TestBookToString_FormatsBookInfoAsString(t *testing.T) { 
+    input := Book{ 
+        Title:  "Sea Room", 
+        Author: "Adam Nicolson", 
+        Copies: 2, 
+    } 
+    want := "Sea Room by Adam Nicolson - 2 copies" 
+    got := BookToString(input) 
+    if want != got { 
+        t.Fatal("BookToString: wrong result") Here’s what changed:
+We imported the testing package, which is part of the standard library
+The test function now takes a parameter, which we name t. We’ll see
+what this is for in a moment.
+Instead of panic, to report the test failure we call t.Fatal (so that’s
+what the t was for!)
+Otherwise, everything is the same. There’s one more step we need to take
+before we can run this test: creating a Go module.
+Creating a module
+You already know what a package is, and a module is a group of packages
+that live together. In fact, there needn’t be more than one package, and in
+our case there isn’t. However, every package needs to be part of a module,
+so let’s call this one books. Run the following command:
+go mod init books
+go: creating new go.mod: module books 
+go: to add module requirements and sums: 
+        go mod tidy
+Notice that a new file has been created, named go.mod, beginning:
+(Listing books/9)
+It’s this file that identifies the module: it tells Go, “All the packages in this
+folder or its subfolders are part of module books”.
+    } 
+}
+module booksWe no longer need to call the test function ourselves from the main function,
+so let’s remove that. main.go now looks like this:
+The go test command
+Great. Here comes the payoff. We can now run only the test, without having
+to run the whole program, by running the command go test:
+go test
+PASS 
+ok      books       0.204s
+The output “PASS” tells us that the test passed, which is reassuring. Just for
+fun, though, let’s see what gets printed when a test fails.
+package main
+ 
+import "fmt" 
+ 
+type Book struct { 
+    Title  string 
+    Author string 
+    Copies int 
+} 
+ 
+func main() { 
+    fmt.Println("It's all good!") 
+} 
+ 
+func BookToString(book Book) string { 
+    return fmt.Sprintf("%v by %v - %v copies", 
+        book.Title, book.Author, book.Copies) 
+}To do that, let’s deliberately insert a bug into the BookToString function
+(which should still be in your main.go file). Change it as follows:
+We inserted the word “OOPS” at the beginning of the format string, so that 
+BookToString will always return a result beginning with “OOPS”, whatever
+the input.
+That should make the test fail, if anything does, so let’s see:
+go test
+--- FAIL: TestBookToString_FormatsBookInfoAsString (0.00s) 
+    main_test.go:14: BookToString: wrong result 
+FAIL 
+exit status 1 
+FAIL    books       0.248s
+Interpreting the failure output
+Interesting! We saw a lot more output this time, which makes sense: there’s
+something to report.
+First, we see FAIL followed by the name of the test function that failed.
+When we have lots of test functions (and we will), it’ll be useful to know
+which one failed. Indeed, we also see the name of the source file where the
+test is defined (main_test.go) and the exact line where the failure
+happened: line 14.
+That’s where the call to t.Fatal is, which helps us zero in even more
+closely on the problem. We know that this line is never executed unless 
+want != got. So, BookToString’s result was different to what we expected.
+But different how?
+func BookToString(book Book) string { 
+    return fmt.Sprintf("OOPS %v by %v - %v copies", 
+        book.Title, book.Author, book.Copies) 
+}It’s not easy to see that from the failure message, so let’s change the
+message to report a few more details:
+Notice that now we use t.Fatalf instead of t.Fatal, and that just like 
+Printf and Sprintf, it takes a format string plus some data.
+In that format string, we’ve used a new kind of placeholder. Instead of %v,
+which prints any value, we’ve used %q, which is specifically for strings, and
+it prints the string inside double quotes.
+Let’s run the test again and see what it produces:
+--- FAIL: TestBookToString_FormatsBookInfoAsString (0.00s) 
+    main_test.go:14: want "Sea Room by Adam Nicolson - 2 copies", 
+    got "OOPS Sea Room by Adam Nicolson - 2 copies"
+Now we can see what was supposed to happen, along with what actually
+did happen. This makes the bug very clear. In this case we knew what it was
+all along, but other bugs might creep in later, so this reporting will be very
+helpful in future.
+The naming of tests
+Something else that’s helpful to see is that extra-informative test name we
+carefully crafted earlier:
+TestBookToString_FormatsBookInfoAsString
+This is reminding us what the test was, by expressing the behaviour we
+want as a sentence: “BookToString formats book info as string”.
+Since the test is failing, we know that’s not happening, or at least it’s not
+happening correctly—in this case, because the format is wrong. Now
+if want != got { 
+    t.Fatalf("want %q, got %q", want, got) 
+}remove the bug you deliberately inserted (so take the “OOPS” out of 
+BookToString) and make sure the test passes again.
+I find this way of naming tests very useful, not only when the test fails, but
+also when it passes. A passing test means that the “behaviour sentence” is
+now a true and fair description of what the function does. It’s a kind of
+documentation, almost.
+Viewing “tests as docs” is such a neat idea that I wrote a little tool to help
+me do it, called gotestdox. Let’s try it out now in our project directory:
+go run github.com/bitfield/gotestdox/cmd/gotestdox@latest
+books: 
+ ✔  BookToString formats book info as string (0.00s)
+As you can see, this runs all our tests (all one of them, so far), and prints out
+their names as sentences, adding spaces as necessary. Very handy! Running 
+gotestdox over my tests every so often reminds me to give them names that
+make sense when read as sentences.
+Updating main
+Now we’ve taken advantage of Go’s built-in test facilities, we don’t need
+our old home-grown self-test. We can update main so that it does something
+useful now: printing the details of a book!
+func main() { 
+    book := Book{ 
+        Title:  "Engineering in Plain Sight", 
+        Author: "Grady Hillhouse", 
+        Copies: 2, 
+    } 
+    fmt.Println(BookToString(book)) 
+}(Listing books/9)
+Let’s try it out:
+go run main.go
+Engineering in Plain Sight by Grady Hillhouse - 2 copies
+Great! Now we’re not wasting users’ time by running self-tests every time
+they want to use the program. As the developer, we can run the tests any
+time we want, but the program we ship to users won’t include them.
+Making changes, guided by tests
+Time for another challenge, to give you a little practice in using tests to help
+you modify the program. We’re going to make a change to the way that 
+BookToString formats the book information, but we’re going to do that in
+two separate steps.
+Updating the test
+First, we’ll change the test function to expect a different string format: the
+one we want. After all, in a sense, this test is the official “specification” of
+what BookToString is supposed to do. If we want to change the behaviour,
+we should change the specification too.
+Once we’ve changed the test, we should run it and make sure we see it fail.
+Why? Well, suppose that we modified the test to expect some different
+result than BookToString produces now. How could it possibly pass, until
+we’ve made the corresponding change to BookToString?
+It couldn’t. That’s the point: in order to verify that the test itself is working,
+we should check it against a “known bad” version of BookToString, and
+make sure that it fails in the way we expect.
+Only then will we go ahead and change BookToString so that the test passes
+once more. That way, we know that even though we’ve changed theprogram, both the test and the function are still correct.
+Over to you for the first step:
+GOAL: Modify the test function so that it expects BookToString to produce
+a result like this:
+Sea Room by Adam Nicolson (copies: 2)
+Failing the test
+Don’t change anything else yet, just the want value in the test function. Run
+the test and make sure that you get the following output before moving on:
+--- FAIL: TestBookToString_FormatsBookInfoAsString (0.00s) 
+    main_test.go:14: want "Sea Room by Adam Nicolson (copies: 2)", 
+    got "Sea Room by Adam Nicolson - 2 copies"
+SOLUTION: Here’s what your test function should look like after the
+change:
+Updating the function
+func TestBookToString_FormatsBookInfoAsString(t *testing.T) { 
+    input := Book{ 
+        Title:  "Sea Room", 
+        Author: "Adam Nicolson", 
+        Copies: 2, 
+    } 
+    want := "Sea Room by Adam Nicolson (copies: 2)" 
+    got := BookToString(input) 
+    if want != got { 
+        t.Fatalf("want %q, got %q", want, got) 
+    } 
+}The test’s job is to detect bugs in the BookToString function, and it’s
+currently detecting one! Namely, that the string returned by BookToString is
+in a slightly different format from the one we require. Let’s go ahead and
+fix that problem now.
+GOAL: Modify BookToString so that it passes the test!
+HINT: Okay, let’s look at the version of BookToString we have right now:
+We know this needs to change, but how? Well, the part that dictates the
+format of the returned string is the first argument to fmt.Sprintf:
+%v by %v - %v copies
+If you think about it, the data we’re putting into this string is exactly the
+same—it’s just that the placeholder indicating where the “copies”
+information will go needs to move, and we need to tweak the surrounding
+text a little. See what you can do. If the test is failing, use the information it
+prints to find what’s wrong.
+SOLUTION: Here’s the new format string we need:
+%v by %v (copies: %v)
+Pretty straightforward, isn’t it? We can think of the format string as a
+“picture” of how the final string will look, but with %v standing in for the
+actual data.
+Passing the test
+func BookToString(book Book) string { 
+    return fmt.Sprintf("%v by %v - %v copies", 
+        book.Title, book.Author, book.Copies) 
+}The order in which the %v placeholders occur in the format string is the
+same order that we need to pass the data values as the other arguments to 
+fmt.Sprintf, and that hasn’t changed. So, the working version of 
+BookToString should look something like this:
+(Listing books/9)
+And let’s check that the test actually passes:
+go test
+PASS 
+ok      printbook       0.199s
+Finally, let’s see what the real program produces:
+go run main.go
+Engineering in Plain Sight by Grady Hillhouse (copies: 2)
+Creating a package
+You learned in the first chapter that a Go program can import and use
+functions from other packages, such as fmt or testing. And, in turn, Go
+programs can provide packages that can be imported and used in other
+programs.
+main is not importable
+All the functions we’ve written up to now, apart from tests, have been in the
+main package. You know that main is special because it’s the only package
+func BookToString(book Book) string { 
+    return fmt.Sprintf("%v by %v (copies: %v)",
+        book.Title, book.Author, book.Copies) 
+}that can be compiled into an executable binary, that is, a runnable program.
+But there’s something else special about main, which is that it can’t be
+imported by any other package. That makes sense if you think about it a
+little: in order for someone to produce a runnable program, they’d have to
+have their own main package. If they tried to import ours too, there would
+be two packages with the same name in the same program, and Go doesn’t
+allow that.
+So, as useful as what we’ve already built for Happy Fun Books is, it’s only
+useful in this one specific main package that we’ve written. We couldn’t
+write a different program that imported our main package and used its 
+BookToString function, for example, and nor could anyone else.
+The books package
+That would be a shame, so let’s fix it. We’ll move the “general bookstore
+functionality” code we’ve written into an importable package (let’s call it 
+books, since that’s the name of our module too). Then, we’ll import that
+package ourselves in main and use it.
+First, we’ll create a new file in the project folder named books.go, and add a
+line declaring that it’s part of a package called books:
+Then, we’ll move over the Book struct and the BookToString function from 
+main.go into this new file:
+package books
+import "fmt" 
+ 
+type Book struct { 
+    Title  string 
+    Author string 
+    Copies int (Listing books/10)
+We included an import "fmt" declaration, too, because we need to use that
+in BookToString.
+Next, let’s rename the main_test.go file to books_test.go, since it’s about
+testing the books package. We’ll change its first line to:
+Now, we need to make a few changes to the test. Because we’ll be using
+stuff from the books package, we’ll need to import it, like any other package
+we use such as testing:
+And it’s no longer enough for us to mention a struct type like Book in our
+test code. That type belongs to another package, so we need to qualify its
+name by putting the package name first, like we do with fmt.Println:
+} 
+ 
+func BookToString(book Book) string { 
+    return fmt.Sprintf("%v by %v (copies: %v)",
+        book.Title, book.Author, book.Copies) 
+}
+package books_test
+import "books"
+input := books.Book{ 
+    Title:  "Sea Room", 
+    Author: "Adam Nicolson", 
+    Copies: 2, 
+} In other words, in this test we’re doing exactly what anyone else would
+have to do if they wanted to use our bookstore code: import the package,
+and then call our functions using their full name, like books.BookToString.
+If it works for us, it should work for them, too!
+Here’s the complete, updated books_test.go file:
+(Listing books/10)
+... 
+got := books.BookToString(input)
+package books_test 
+ 
+import ( 
+    "books" 
+    "testing" 
+) 
+ 
+func TestBookToString_FormatsBookInfoAsString(t *testing.T) { 
+    input := books.Book{ 
+        Title:  "Sea Room", 
+        Author: "Adam Nicolson", 
+        Copies: 2, 
+    } 
+    want := "Sea Room by Adam Nicolson (copies: 2)" 
+    got := books.BookToString(input) 
+    if want != got { 
+        t.Fatalf("want %q, got %q", want, got) 
+    } 
+}Notice that we can import both the books and testing packages in a single 
+import declaration, by surrounding them with parentheses. This is neater
+than repeating import on each line.
+Updating the main package
+Next, we’ll make the same changes to our main package. We’ll need to
+update main.go to import the books package and use the full names of its
+functions and types:
+(Listing books/10)
+This is a completely reasonable thing to write, but all the same, if we try to
+run it, Go has a complaint:
+found packages books (books.go) and main (main.go) ...
+What this means is that Go doesn’t allow two different packages to cohabit
+in the same folder. We can have as many packages as we want in our
+package main
+ 
+import ( 
+    "books" 
+    "fmt" 
+) 
+ 
+func main() { 
+    book := books.Book{ 
+        Title:  "Engineering in Plain Sight", 
+        Author: "Grady Hillhouse", 
+        Copies: 2, 
+    } 
+    fmt.Println(books.BookToString(book)) 
+}project, so long as they live in different folders. So either books or main has
+to move somewhere else. Which do you think it should be?
+It makes sense to me that the books package should be in the top-level
+folder, at the “root” of our project, since books are fundamentally what this
+project is about.
+In that case, then, if we want to add a new main package for a command that
+users can run, we’ll need to create a subfolder for it. We can call this
+whatever we want, but cmd (for “command”) is the convention most Go
+programmers use:
+mkdir cmd
+And, because (spoiler alert), we’re going to end up having more than one
+command eventually, let’s create a further subfolder for this command.
+Since it currently lists all the books we have in our catalog, let’s name it 
+list:
+mkdir cmd/list
+And now we can move the offending main.go file into this subfolder:
+mv main.go cmd/list
+Now that we’ve resolved the “clashing packages” issue, we should be able
+to run the tests:
+go test
+PASS 
+ok      books   0.226s
+And we should also be able to run our list command:
+go run ./cmd/list
+Engineering in Plain Sight by Grady Hillhouse (copies: 2)Great job! We’re well on our way to a thriving bookstore. We have a
+package that can store and format information about books, and we have a
+command that sets up a catalog containing a single book, and prints its
+details.
+But customers can be rather demanding, and they might want us to be able
+to stock more than a single book. That means updating our program to
+handle multiple books at once, and we’ll see how to do that in the next
+chapter.
+Here’s what we know so far
+You’ve learned several new key ideas in this chapter: all the techniques we
+need to write self-testing code, including conditional statements,
+comparison operators, panic, return, formatting data with fmt.Sprintf, and
+Go’s built-in testing package.
+You also now know how to write useful test names, and how to view them
+as docs using gotestdox, as well as how to write informative failure
+messages. You’re becoming more familiar with the “guided by tests”
+workflow we use for adding new features, fixing bugs, or changing the
+behaviour of existing functions.
+Usefully, you’ve learned how to put your code in an importable package,
+and how to create a separate main.go file that imports the package and uses
+it to do something.

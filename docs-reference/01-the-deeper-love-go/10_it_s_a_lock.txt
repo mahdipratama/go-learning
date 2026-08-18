@@ -1,0 +1,601 @@
+10. It’s a lock
+ 
+(original photo by BazzaDaRambler, licensed under Creative Commons)
+In the previous chapter we learned the fundamentals of concurrent
+programming in Go, using goroutines and the go statement. Sharing data
+between goroutines is useful, but creates potential dangers, just like sharing
+a railway track between trains.
+And we saw that one way to eliminate these risks is to use a mutex, which
+acts like the token that grants trains exclusive access to a section of track. If
+each goroutine acquires the mutex before accessing the shared data, no data
+races—no collisions—can arise.
+This sounds like just what we want for our bookstore project, where
+multiple sales terminals need to be able to safely read and update the book
+catalog. Let’s see if we can add a mutex to our books package to make this
+possible.
+Smoke testingAs usual when making any change to our code, we’ll start with a test. To
+prove that adding a mutex prevents data races, we’ll first need to show that
+a data race exists without it.
+If we write a test that triggers the race detector by making concurrent
+accesses to the catalog, then when we add the mutex, the race should go
+away. That’ll give us confidence that we’ve solved the problem correctly.
+A test for concurrent access
+For example, we could call SetCopies in one goroutine to write to the
+catalog, while in another goroutine we concurrently read the same catalog
+with another method: let’s call it GetCopies.
+GetCopies doesn’t exist yet, but we’ll need it for this test to work, and it’s
+straightforward to write:
+Now we can write the concurrent test. Something like this might do the job:
+func (catalog Catalog) GetCopies(ID string) (int, error) { 
+    book, ok := catalog[ID] 
+    if !ok { 
+        return 0, fmt.Errorf("ID %q not found", ID) 
+    } 
+    return book.Copies, nil 
+}
+func TestSetCopies_IsRaceFree(t *testing.T) { 
+    t.Parallel() 
+    catalog := getTestCatalog() 
+    go func() { 
+        for range 100 { 
+            err := catalog.SetCopies("abc", 0) 
+            if err != nil { (Listing books/18)
+Not significantly different from the copies/2 program we wrote in the
+previous chapter, except that this is in the form of a test. We create a
+goroutine whose only job is to call SetCopies repeatedly on a book:
+We don’t expect SetCopies to return an error, because that only happens
+when book abc doesn’t exist or the new copies value is invalid. But we
+check it all the same, just in case.
+You might wonder why we don’t call t.Fatal(err) if SetCopies fails. If we
+did, the editor would give us a warning:
+call to (*testing.T).Fatal from a non-test goroutine
+                panic(err) 
+            } 
+        } 
+    }() 
+    for range 100 { 
+        _, err := catalog.GetCopies("abc") 
+        if err != nil { 
+            t.Fatal(err) 
+        } 
+    } 
+}
+for range 100 { 
+    err := catalog.SetCopies("abc", 0) 
+    if err != nil { 
+        panic(err) 
+    } 
+}This is something to be careful about when creating new goroutines in tests.
+One of the characteristics of concurrency in Go is that, once you’ve
+launched a goroutine, you can’t stop it. It becomes an independently
+executing task controlled by the scheduler, as we saw in the previous
+chapter.
+So, calling t.Fatal in one goroutine can’t stop other goroutines in the same
+test. The solution is to use panic instead.
+Meanwhile, the remainder of the test repeatedly calls GetCopies, creating a
+conflicting read access that we feel should trigger the race detector:
+This kind of thing is often called a smoke test, after the most basic way of
+testing electronic hardware: leave it switched on for a while and see if any
+smoke comes out! Similarly, we exercise the catalog a bit by performing
+lots of concurrent reads and writes. If that causes it to catch fire and start
+smoking, the race detector should pick this up.
+Detecting the race
+Let’s run just this specific test, without the race detector for now. We expect
+it to pass, whether or not there’s a data race, and so it does:
+go test -run SetCopies_IsRaceFree
+PASS
+The -run flag lets us isolate one test, or a group of tests, by name, which
+saves time when you have a lot of tests and you’re only interested in a
+for range 100 { 
+    _, err := catalog.GetCopies("abc") 
+    if err != nil { 
+        t.Fatal(err) 
+    } 
+}subset of them.
+Okay, so now let’s try it with the race detector enabled:
+go test -race -run SetCopies_IsRaceFree
+PASS 
+================== 
+WARNING: DATA RACE 
+Write... by goroutine 7: 
+  ... 
+  books.Catalog.SetCopies() 
+      .../love/books/18/books.go:82 
+  books_test.TestSetCopies_IsRaceFree.func1() 
+      .../love/books/18/books_test.go:181 
+ 
+Previous read... by goroutine 6: 
+  ... 
+  books.Catalog.GetCopies() 
+      .../love/books/18/books.go:66 
+  books_test.TestSetCopies_IsRaceFree() 
+      .../love/books/18/books_test.go:185 
+...
+That’s what we expected: the call to SetCopies is racing with the call to 
+GetCopies in the test’s two goroutines. Let’s see what we can do to fix this
+by adding a mutex to the catalog.
+Installing the mutex
+Here’s our current definition of the Catalog type:
+The problem with this is that, as it stands, there’s nowhere for the mutex
+variable to go. We still need the map containing the book information, but
+we need a way to associate it with a mutex, too.
+A Catalog struct
+type Catalog map[string]BookLet’s turn the catalog into a struct with two fields, one for the mutex, and
+the other for the map data:
+(Listing books/18)
+We store a pointer to the mutex rather than the mutex value itself, and it’s
+worth taking a moment to think about why that’s necessary.
+Every method that accesses the catalog now needs to be mutex-aware: in
+other words, it’ll need to get the lock before trying to read the map data.
+Take GetBook, for example:
+GetBook takes a Catalog value, not a pointer. So, as we saw in the earlier
+chapter discussing pointers, when this method is called, it will receive a
+copy of the catalog.
+And it never makes sense to copy a mutex. If we did, then each goroutine
+would be getting the lock on its own copy of the mutex, and that would
+bypass the original mutex altogether.
+It would be as though the train driver 3D-printed her own token and set out
+blithely across the narrow bridge, believing she had exclusive access to it.
+That’s no way to run a railroad, and it won’t work for the bookstore either.
+That’s why we need to make mu a pointer field here. You can copy a pointer
+all you want, but all the copies will still point to the same mutex, so we’re
+safe.
+Updating GetAllBooks
+type Catalog struct { 
+    mu   *sync.RWMutex 
+    data map[string]Book 
+}
+func (catalog Catalog) GetBook(ID string) (Book, bool) {So, now that we’ve changed the definition of the Catalog type, we need to
+refactor all the functions and methods that deal with the catalog to reflect
+this change.
+Let’s start with GetAllBooks. Here’s what we had before:
+(Listing books/17)
+We need to make a few small changes here. First, you’ll remember from the
+chapter on pointers that if a method wants to modify its receiver, it must
+take a pointer to that receiver. Otherwise, the changes will only affect a
+local copy, and not the original catalog.
+And even though GetAllBooks only reads the catalog, in order to do that it
+needs to get the mutex lock, as we’ve seen. That means changing the state
+of the mutex (from “unlocked” to “locked“, if possible). But that modifies
+the Catalog receiver. Hence, GetAllBooks must now take a pointer
+(*Catalog) instead of a value:
+We won’t add the mutex locking yet, because we’d like to be able to prove
+that a data race exists without it, and then we’ll see if adding the mutex
+eliminates the data race.
+However, we still need to change the way we extract the data. The map
+where the book information lives is now called catalog.data, not just 
+catalog, so we’ll make that small tweak:
+func (catalog Catalog) GetAllBooks() []Book { 
+    return slices.Collect(maps.Values(catalog)) 
+}
+func (catalog *Catalog) GetAllBooks() []Book {
+func (catalog *Catalog) GetAllBooks() []Book { 
+    return slices.Collect(maps.Values(catalog.data)) Updating GetBook
+Over to you now to update the GetBook method along the same lines.
+GOAL: Update GetBook to work with the new Catalog type.
+HINT: Just like GetAllBooks, GetBook will need to take a pointer to the
+catalog, because it will be mutex-aware (when we add the mutex handling
+later). And don’t forget the name of the map has now changed to 
+catalog.data.
+SOLUTION: Here’s my version:
+Updating the other methods
+Let’s make the same changes to AddBook:
+}
+func (catalog *Catalog) GetBook(ID string) (Book, bool) { 
+    book, ok := catalog.data[ID] 
+    return book, ok 
+}
+func (catalog *Catalog) AddBook(book Book) error { 
+    _, ok := catalog.data[book.ID] 
+    if ok { 
+        return fmt.Errorf("ID %q already exists", book.ID) 
+    } 
+    catalog.data[book.ID] = book 
+    return nil 
+}The GetCopies and SetCopies methods need similar changes, and they’re
+fairly straightforward given what we’ve already done:
+Creating and storing catalogs
+Now that we’ve changed Catalog to be a struct, we’ll also need to make
+some updates to the methods that read and write catalog data to disk. Let’s
+start with OpenCatalog.
+Updating OpenCatalog
+func (catalog *Catalog) GetCopies(ID string) (int, error) { 
+    book, ok := catalog.data[ID] 
+    if !ok { 
+        return 0, fmt.Errorf("ID %q not found", ID) 
+    } 
+    return book.Copies, nil 
+} 
+ 
+func (catalog *Catalog) SetCopies(ID string, copies int) error { 
+    book, ok := catalog.data[ID] 
+    if !ok { 
+        return fmt.Errorf("ID %q not found", ID)
+    } 
+    err := book.SetCopies(copies) 
+    if err != nil { 
+        return err 
+    } 
+    catalog.data[ID] = book 
+    return nil 
+}Here’s our current version of OpenCatalog:
+(Listing books/17)
+Since all our methods on Catalog have now become pointer methods, it
+makes sense that we should also now change OpenCatalog to return a
+pointer:
+func OpenCatalog(path string) (Catalog, error) { 
+    file, err := os.Open(path) 
+    if err != nil { 
+        return nil, err 
+    } 
+    defer file.Close() 
+    catalog := Catalog{} 
+    err = json.NewDecoder(file).Decode(&catalog) 
+    if err != nil { 
+        return nil, err 
+    } 
+    return catalog, nil 
+}
+func OpenCatalog(path string) (*Catalog, error) { 
+    file, err := os.Open(path) 
+    if err != nil { 
+        return nil, err 
+    } 
+    defer file.Close() 
+    catalog := Catalog{ 
+        mu:     &sync.RWMutex{}, 
+        data: map[string]Book{}, 
+    } 
+    err = json.NewDecoder(file).Decode(&catalog.data) Initialising the catalog
+The most significant change to this function is the way we construct a new
+instance of Catalog:
+We need to initialise mu and data to something sensible here, because their
+zero values (nil in both cases) wouldn’t be useful. A nil pointer doesn’t
+point to any mutex, and you can’t add any data to a nil map.
+To set up the mu field, we write a sync.RWMutex literal, and then take the
+address of it using the & operator:
+To initialise data, we use an empty map literal:
+Updating Sync
+The only change needed to Sync at the moment is to have it take a *Catalog,
+like the other methods, and use the name of the map field, catalog.data:
+    if err != nil { 
+        return nil, err 
+    } 
+    return &catalog, nil 
+}
+catalog := Catalog{ 
+    mu:   &sync.RWMutex{}, 
+    data: map[string]Book{}, 
+}
+mu: &sync.RWMutex{},
+data: map[string]Book{},While we’re here, though, it seems odd that we have to tell Sync what path
+to write the file to. After all, we had to pass the path to OpenCatalog to get
+the catalog in the first place. Shouldn’t the catalog be able to “remember”
+where it came from?
+In other words, once you have a Catalog, it seems like you should be able to
+simply tell it to Sync itself to disk, without having to specify the path again.
+The path could be stored as part of the Catalog struct itself.
+Let’s make that change to the struct definition, then, to add a string Path
+field:
+We’ll tweak the OpenCatalog function to save this information when it loads
+the catalog from disk:
+func (catalog *Catalog) Sync(path string) error { 
+    file, err := os.Create(path) 
+    if err != nil { 
+        return err 
+    } 
+    defer file.Close() 
+    err = json.NewEncoder(file).Encode(catalog.data) 
+    if err != nil { 
+        return err 
+    } 
+    return nil 
+}
+type Catalog struct { 
+    mu   *sync.RWMutex 
+    data map[string]Book 
+    Path string 
+}With these changes made, we can remove the path parameter from Sync:
+func OpenCatalog(path string) (*Catalog, error) { 
+    file, err := os.Open(path) 
+    if err != nil { 
+        return nil, err 
+    } 
+    defer file.Close() 
+    catalog := Catalog{ 
+        mu:     &sync.RWMutex{}, 
+        data: map[string]Book{}, 
+    } 
+    err = json.NewDecoder(file).Decode(&catalog.data) 
+    if err != nil { 
+        return nil, err 
+    } 
+    catalog.Path = path // remember where you came from 
+    return &catalog, nil 
+}
+func (catalog *Catalog) Sync() error { 
+    file, err := os.Create(catalog.Path) 
+    if err != nil { 
+        return err 
+    } 
+    defer file.Close() 
+    err = json.NewEncoder(file).Encode(catalog.data) 
+    if err != nil { 
+        return err 
+    } Nice work! Now let’s turn to refactoring our tests.
+Updating the tests
+Since the changes to the Catalog type are largely internal, it shouldn’t really
+affect users too much, and it turns out that’s true for the tests as well.
+Creating the test catalog
+Since OpenCatalog now returns a pointer, we’ll need to change 
+getTestCatalog to do the same. What we’d like to write is something like
+this, which unfortunately doesn’t work:
+    return nil 
+}
+func getTestCatalog() *books.Catalog { 
+    return &books.Catalog{ 
+        mu:   &sync.RWMutex{},       // setting `mu` is not 
+allowed 
+        data: map[string]books.Book{ // nor `data`; they're both 
+private 
+            "abc": { 
+                Title:  "In the Company of Cheerful Ladies", 
+                Author: "Alexander McCall Smith", 
+                Copies: 1, 
+                ID:     "abc", 
+            }, 
+            "xyz": { 
+                Title:  "White Heat", 
+                Author: "Dominic Sandbrook", 
+                Copies: 2, 
+                ID:     "xyz", This gives a compile error:
+cannot refer to unexported field mu in struct literal of type 
+books.Catalog 
+cannot refer to unexported field data in struct literal of type 
+books.Catalog
+What’s going on?
+Exported and unexported fields
+The message about “unexported” fields is Go’s way of saying that the mu
+and data fields are private: that is, they’re internal to the books package.
+They’re not “visible” to code outside the package (such as this test helper)
+so we can’t refer to them directly.
+This visibility is controlled by the names of the fields: if they began with a
+capital letter (Mu) they’d be exported, but since they begin with a lowercase
+letter (mu) they aren’t.
+Which is the right choice for these particular fields? Should we change
+them to be exported, or keep them private? One way to answer this question
+is to ask “Would users of the books package want to read or write these
+fields? If so, would it be sensible to let them?”
+The Path field is capitalised, so it’s already exported, and that makes sense:
+we can imagine users wanting to change the location of the disk file
+associated with the catalog.
+What about the data field? Users might want to access data directly, for
+example, but people often want things that aren’t good for them. And we
+            }, 
+        }, 
+    } 
+}already know that allowing unguarded access to the map—bypassing the
+mutex—can seriously damage your program’s health.
+It seems sensible to keep the data field unexported—that is, private to the 
+books package. That way, users can only access it indirectly, via methods
+like GetBook and AddBook, which we’ll be updating to be mutex-aware.
+Similarly, users shouldn’t ever reference the mu field directly: it’s an internal
+implementation detail.
+If both fields need to stay unexported, though, we still have a problem: how
+can we create a catalog for test purposes if we can’t set the data field
+directly?
+We could use OpenCatalog to read a test catalog from disk, but that would
+be much slower than initialising the catalog in memory. It seems like there’s
+something missing from the catalog API that would help us here.
+A NewCatalog function
+So, let’s use the magic function technique once more. If we had an empty
+catalog, we could use AddBook to put the test books into it. It would be
+convenient, then, if there were a function called something like NewCatalog
+that returned an empty catalog.
+If we had that function, then we could write our getTestCatalog helper
+along these lines:
+func getTestCatalog() *books.Catalog { 
+    catalog := books.NewCatalog() 
+    err := catalog.AddBook(books.Book{ 
+        Title:  "In the Company of Cheerful Ladies", 
+        Author: "Alexander McCall Smith", 
+        Copies: 1, 
+        ID:     "abc", 
+    }) 
+    if err != nil { (Listing books/18)
+We don’t bother to take the t and use t.Helper or t.Fatal, because there’s
+no earthly reason why AddBook should fail in these circumstances. If it does,
+we can use panic to signal that something has gone terribly wrong with our
+test setup.
+The catalog doesn’t need a Path, because it doesn’t come from a disk file.
+We do want to write the test catalog to a temporary file for some tests, but
+that’s fine: we can set the Path field explicitly in that case.
+Now we just need to write NewCatalog. Can you help?
+GOAL: Implement NewCatalog, guided by a test.
+HINT: First, let’s consider what useful test we could write for NewCatalog.
+It’s supposed to return an empty catalog, so how can we check that? We
+can’t look at the data field directly, but we could call GetAllBooks to get its
+contents.
+        panic(err) 
+    } 
+    err = catalog.AddBook(books.Book{ 
+        Title:  "White Heat", 
+        Author: "Dominic Sandbrook", 
+        Copies: 2, 
+        ID:     "xyz", 
+    }) 
+    if err != nil { 
+        panic(err) 
+    } 
+    return catalog 
+}SOLUTION: Here’s what I came up with:
+(Listing books/18)
+And here’s an implementation of NewCatalog that passes it:
+(Listing books/18)
+Nothing especially clever here. It’s the same code we already wrote in 
+OpenCatalog to initialise the empty catalog before loading data into it from
+the JSON file.
+In fact, let’s refactor OpenCatalog now to use our NewCatalog function:
+func TestNewCatalog_CreatesEmptyCatalog(t *testing.T) { 
+    t.Parallel() 
+    catalog := books.NewCatalog() 
+    books := catalog.GetAllBooks() 
+    if len(books) > 0 { 
+        t.Errorf("want empty catalog, got %#v", books) 
+    } 
+}
+func NewCatalog() *Catalog { 
+    return &Catalog{ 
+        mu:   &sync.RWMutex{}, 
+        data: map[string]Book{}, 
+    } 
+}
+func OpenCatalog(path string) (*Catalog, error) { 
+    file, err := os.Open(path) 
+    if err != nil { (Listing books/18)
+Checking the tests
+That completes our refactoring to add the mutex to the catalog. However,
+since we haven’t actually used that mutex yet, our tests should still trip the
+race detector:
+go test -race -run SetCopies_IsRaceFree
+================== 
+WARNING: DATA RACE 
+...
+Good! Well, not good, exactly: we still have a data race. But that’s what we
+expected, so now we can go ahead and fix it.
+Locking and unlocking
+We don’t need to modify NewCatalog or OpenCatalog: since they both create
+new catalogs, no one else could have a copy of that data yet. Since there
+can’t be any concurrent access to it, there’s no possibility of a data race, and
+using the mutex is unnecessary.
+        return nil, err 
+    } 
+    defer file.Close() 
+    catalog := NewCatalog() 
+    err = json.NewDecoder(file).Decode(&catalog.data) 
+    if err != nil { 
+        return nil, err 
+    } 
+    catalog.Path = path 
+    return catalog, nil 
+}We will need to change the methods on Catalog, such as GetAllBooks, to be
+aware of the mutex. We’re using a sync.RWMutex, which as you’ll remember
+gives us two kinds of locks: a read lock, that can be shared, and a write
+lock, which is exclusive. Which type of lock do we need for GetAllBooks,
+then?
+Adding read locks
+GetAllBooks only reads the data; it never updates the catalog. That means a
+read lock will be sufficient, so we’ll add calls to RLock / RUnlock:
+(Listing books/18)
+The same logic applies to GetBook and GetCopies, too. They only read the
+data, so they only need a read lock:
+func (catalog *Catalog) GetAllBooks() []Book { 
+    catalog.mu.RLock() 
+    defer catalog.mu.RUnlock() 
+    return slices.Collect(maps.Values(catalog.data)) 
+}
+func (catalog *Catalog) GetBook(ID string) (Book, bool) { 
+    catalog.mu.RLock() 
+    defer catalog.mu.RUnlock() 
+    book, ok := catalog.data[ID] 
+    return book, ok 
+} 
+ 
+func (catalog *Catalog) GetCopies(ID string) (int, error) { 
+    catalog.mu.RLock() 
+    defer catalog.mu.RUnlock() 
+    book, ok := catalog.data[ID] (Listing books/18)
+Sync also only needs a read lock, since it’s just copying the data to disk, not
+changing it:
+(Listing books/18)
+Adding write locks
+When it comes to a method like AddBook, though, we know it will need a
+write lock. After all, the purpose of AddBook is to change the catalog data,
+and we must prevent anyone else reading or writing it during that process.
+    if !ok { 
+        return 0, fmt.Errorf("ID %q not found", ID) 
+    } 
+    return book.Copies, nil 
+}
+func (catalog *Catalog) Sync() error { 
+    catalog.mu.RLock() 
+    defer catalog.mu.RUnlock() 
+    file, err := os.Create(catalog.Path) 
+    if err != nil { 
+        return err 
+    } 
+    defer file.Close() 
+    err = json.NewEncoder(file).Encode(catalog.data) 
+    if err != nil { 
+        return err 
+    } 
+    return nil 
+}To get the write lock, then, we’ll use Lock, and release it with Unlock:
+(Listing books/18)
+The same change is needed for SetCopies, which also changes the catalog
+data:
+func (catalog *Catalog) AddBook(book Book) error { 
+    catalog.mu.Lock() 
+    defer catalog.mu.Unlock() 
+    _, ok := catalog.data[book.ID] 
+    if ok { 
+        return fmt.Errorf("ID %q already exists", book.ID) 
+    } 
+    catalog.data[book.ID] = book 
+    return nil 
+}
+func (catalog *Catalog) SetCopies(ID string, copies int) error { 
+    catalog.mu.Lock() 
+    defer catalog.mu.Unlock() 
+    book, ok := catalog.data[ID] 
+    if !ok { 
+        return fmt.Errorf("ID %q not found", ID)
+    } 
+    err := book.SetCopies(copies) 
+    if err != nil { 
+        return err 
+    } 
+    catalog.data[ID] = book 
+    return nil 
+}(Listing books/18)
+Mismatched lock/unlock calls
+It’s easy to make a mistake with an RWMutex and accidentally call Unlock
+when you mean RUnlock, or vice versa. If that happens, though, the runtime
+will panic the program:
+fatal error: sync: RUnlock of unlocked RWMutex
+Similarly, if you try to unlock a mutex that you haven’t previously locked,
+that’s also a fatal error:
+fatal error: sync: Unlock of unlocked RWMutex
+This makes sense, since in both cases the errant unlock must be a mistake.
+Once a program gets its locks in a twist, things are likely to go painfully
+wrong pretty quickly. The only safe thing to do is panic.
+A concurrency-safe catalog
+So, has the addition of locking fixed our data race test? Let’s find out:
+go test -race
+PASS
+Signs point to yes. That’s a significant improvement in the robustness and
+value of the books package. Well done!
+The real benefit of this approach is not the mutex locking, as such, because
+users could have done that themselves. It’s the fact that the mutex is
+invisible: the locking is all internal, so users don’t need to worry about it, or
+even know that it’s happening.
+As we saw in a previous chapter, the Go language doesn’t have some of the
+built-in safeguards provided by other languages (notably Rust). That’s by
+design, because Go mostly favours simplicity over safety, and where safety
+isn’t critical that trade-off makes sense.But where safety is critical, such as in a multi-user bookstore system, we
+have to be extra vigilant. When we publish reusable Go libraries like the 
+books package, we can’t know what kind of programs they’ll end up being
+part of. Even when a package doesn’t contain concurrent code itself, we
+should always try to ensure that it’s safe to use concurrently.
+To do this, we need to make its API safe by default. The most reliable way
+to do this in Go is usually to define a struct with private fields guarded by a
+mutex, and accessible only by mutex-aware methods.
+Here’s what we know so far
+You now know how to use Go’s built-in race detector, via the -race flag, to
+automatically detect data races, and how to prevent them by writing locking
+code using a mutex. You understand the distinction between read locks and
+write locks, and how to implement both using the sync.RWMutex type.
+As a result, you have a thorough grounding in the knowledge you need to
+make your packages concurrency-safe, and also to write safe and correct
+concurrent Go programs.
+In the next chapter, then, let’s put that knowledge to work by writing one.

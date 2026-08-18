@@ -1,0 +1,458 @@
+The Deeper Love of Go
+John Arundel
+Bitfield Consulting
+February 13, 2026
+© 2022 John ArundelThe Deeper Love of Go
+Praise for The Deeper Love of Go
+Introduction
+What’s this?
+What you’ll need
+Where to find the code examples
+What you’ll learn
+How to use this book
+The love of Go
+1. Happy Fun Books
+Hello, world
+Our first program
+Packages
+Imports
+Functions
+Declaring a function
+Calling a function
+A challenge
+Creating a hello function
+Function ordering
+Dealing with data
+Values
+Variables
+Assigning values to variables
+Creating your own variables
+Adding a printBook function
+Declaring function parameters
+Here’s what we know so far
+2. Just my type
+New data types
+Numeric data
+Parameter types
+The int type
+Variable declarationsZero values and default values
+Type checking
+Type mismatch errors
+A plausible bug
+Structured data
+Introducing structs
+Declaring a new struct type
+Struct variables and values
+Combining declaration and assignment
+Struct literals
+Accessing struct fields
+Struct parameters
+Here’s what we know so far
+3. Tests of strength
+Self-testing code
+What does “it works” mean?
+How could we test this?
+Designing for testability
+The tools we need
+Conditional statements
+Comparison operators
+The panic function
+Writing the test
+Breaking it down
+Results and return statements
+Running the test
+The fmt.Sprintf function
+The testing package
+Declaring a test
+Creating a module
+The go test command
+Interpreting the failure output
+The naming of tests
+Updating main
+Making changes, guided by tests
+Updating the test
+Failing the testUpdating the function
+Passing the test
+Creating a package
+main is not importable
+The books package
+Updating the main package
+Here’s what we know so far
+4. Slicing & dicing
+Slices
+Slice variables and literals
+Indexing slices
+The len and append functions
+A collection of books
+Setting up the world
+Comparing slices
+The updated test
+Implementing GetAllBooks
+A global catalog variable
+Improving the output format
+Unique identifiers
+Finding a specific book
+Designing GetBook to take a book ID
+Adding the ID field to Book
+Implementing GetBook
+A first attempt at GetBook
+The “comma, ok” pattern
+Returning multiple results
+Boolean values
+Testing the ok value
+The sad path
+Adding IDs to the catalog
+Fixing the tests
+Here’s what we know so far
+5. Map mischief
+A find command
+Implementing find
+Command-line arguments and os.ArgsChecking arguments
+A more efficient data structure
+Big-O notation
+Introducing the map
+Turning maps into slices
+Iterators, maps.Values, and slices.Collect
+Slices and maps have a lot in common
+The ok syntax
+Iteration order of maps
+Sorting structs by field
+Modifying the catalog
+The magic function
+Testing AddBook
+Postconditions and preconditions
+A hint of disquiet
+Data races
+Stepping on each other’s toes
+De-globalising the catalog
+A test data helper
+Fixing the tests
+Initializing the real catalog
+Here’s what we know so far
+6. Objects behaving badly
+Objects and methods
+The mysterious testing.T
+Methods are syntactic sugar for functions
+Turning BookToString into a method
+Adding methods to the catalog
+Methods can only be added to local types
+Defining a new type
+The GetBook and AddBook methods
+Updating the tools
+Pointers
+Objects as abstractions
+Validation
+A non-validating SetCopies method
+Assignment creates a copyPointers are references
+The & and * operators
+Automatic dereferencing of struct pointers
+Adding validation to SetCopies
+When validation fails
+Returning errors
+Testing for a validation error
+Creating error values
+Here’s what we know so far
+7. Nevertheless, she persisted
+Making persistent changes
+Storing the catalog on disk
+Getting the catalog from a disk file
+Handling errors
+Testing OpenCatalog
+The data format
+Creating the test data
+A working OpenCatalog function
+The defer keyword
+Returning errors
+Decoding JSON data
+Passing a pointer to Decode
+Reading the catalog
+Passing the test
+Simulating a data format error
+The updated find program
+Updating list to use OpenCatalog
+A program to change catalog data
+Writing the catalog
+Sketching a possible copies program
+Breaking it down
+A Sync method
+An alternative solution
+Winning the change race
+Making catalog changes atomic
+Here’s what we know so far
+8. That syncing feelingWriting catalog data to disk
+Testing Sync
+A test helper
+The t.Helper method
+Updating the tests
+A round-trip test for Sync / OpenCatalog
+A potential “does nothing” bug
+A career-limiting mistake
+Temporary directories with t.TempDir
+Implementing Sync
+Enabling safe concurrent access to the catalog
+Testing a SetCopies method on the catalog
+Five ways to fail
+Implementing SetCopies
+Making AddBook concurrency-safe
+A locking protocol for shared data
+The simplest imaginable lock scheme
+Mutexes in Go
+Both reads and writes need to be lock-aware
+Read locks and write locks
+Go’s sync.RWMutex type
+Here’s what we know so far
+9. Go go goroutines
+Understanding concurrency
+Multi-tasking
+Time-sharing
+A co-operative scheduler
+Concurrent tasks
+Concurrency is not parallelism
+Concurrency in Go
+Goroutines
+Ranging over integers
+The go statement
+The goroutine that never was
+Starvation
+New goroutines start in the ready queue
+Being the schedulerYielding with time.Sleep
+Interleaved goroutines
+Data sharing and data races
+A shared variable
+Racing goroutines
+Data races in concurrent systems
+Double access problems
+Detecting races
+Clash of the customers
+Anonymous function literals
+Increment and decrement statements
+Demonstrating the race
+Go’s race detector
+Understanding the output
+Mutual exclusion and locking
+Adding a mutex
+The “lock, defer unlock” pattern
+Taking the token
+A race-free program with locking
+Here’s what we know so far
+10. It’s a lock
+Smoke testing
+A test for concurrent access
+Detecting the race
+Installing the mutex
+A Catalog struct
+Updating GetAllBooks
+Updating GetBook
+Updating the other methods
+Creating and storing catalogs
+Updating OpenCatalog
+Initialising the catalog
+Updating Sync
+Updating the tests
+Creating the test catalog
+Exported and unexported fields
+A NewCatalog functionChecking the tests
+Locking and unlocking
+Adding read locks
+Adding write locks
+Mismatched lock/unlock calls
+A concurrency-safe catalog
+Here’s what we know so far
+11. Your server for tonight
+A client/server protocol
+Low-level: TCP/IP
+High-level: HTTP
+HTTP requests
+HTTP responses
+An abstract request/response protocol
+A simple HTTP server in Go
+http.ListenAndServe
+Addresses, hosts, and port numbers
+Handlers, ResponseWriter, and Request
+ListenAndServe listens forever
+Trying out the server
+Concurrent connections
+A simple HTTP client in Go
+http.Get
+URLs
+The response status code
+The response body
+io.Reader and io.ReadAll
+Trying out the client
+A networked bookstore API
+A networked list program
+Handling startup errors
+Making the request
+Decoding the response body
+A dummy server implementation
+Unmarshaling JSON from bytes
+An unexpected server
+It’s coming from inside the houseA unique server
+Serving on a random local address
+Here’s what we know so far
+12. Balancing the books
+A bookstore API server
+The “Hello, world” version
+Accessing the catalog in a handler
+A closure over catalog
+A server program
+Rewriting list
+Handling different kinds of request
+Including the request type in the URL
+Multiplexing with ServeMux
+Adding a ServeMux to the bookstore server
+Including parameters in the request
+Implementing find
+A find endpoint with an ID parameter
+Adding a version number to the URL
+Updating the find program to HTTP
+HTTP handler panics are recovered
+Returning “not found” for unknown IDs
+Using http.Error to set the response status
+Here’s what we know so far
+13. The end of the beginning
+A bookstore client
+The Client abstraction
+A getTestClient helper
+Implementing GetBook
+Updating the find program
+Adding GetAllBooks
+Abstracting common code
+A polymorphic method
+The any interface
+Managing stock levels
+TOCTOU for two
+Stale and poisoned locks
+Atomic changesImplementing getcopies
+Adding copies to the catalog
+Handlers that return errors (or don’t)
+An AddCopies method on Catalog
+Subtracting copies
+Implementing subcopies
+User testing
+Sentinel errors
+Error wrapping
+Are we nearly there yet?
+What’s next?
+Happy fun projects
+You are enough
+About this book
+Who wrote this?
+Feedback
+Get my free newsletter
+Free updates to future editions
+The Power of Go: Tools
+The Power of Go: Tests
+Know Go
+Further reading
+CreditsPraise for The Deeper Love of Go
+A great way to dive into Go! 
+—Max VelDink
+Takes a very different approach from other beginner Go books, putting
+much more emphasis on mastering the fundamentals, rather than
+bewildering the reader with irrelevant detail. 
+—Kris Broadie
+One of the best technical books I have read in a very long time. 
+—Paul Watts
+John is both a superb engineer and, just as importantly, an excellent
+teacher / communicator. 
+—Luke Vidler
+A fantastic example of good technical writing. Clear, concise and
+easily digestible. 
+—Michael Duffy
+This book’s writing style feels as if John is speaking to you in person
+and helping you along the way. 
+—@rockey5520
+Very well written, friendly, and informative. 
+—Chris Doyle
+John’s writing is personable, human and funny—his examples are
+realistic and relevant. The test-driven instruction teaches Go in a deep,
+meaningful and engaging way. 
+—Kevin Cunningham
+The gentlest introduction to concurrency; it uses all the right technical
+terms and doesn’t try to dumb things down, but still presents ideas in away that keeps lightbulbs in my head continuously going off. 
+—Sam Ezebunandu
+A joy to read. Highly recommended for anyone starting with Go! 
+—Ryunosuke Zoran
+Arundel’s writing is genuinely very good. I would rank him up there
+with the best O’Reilly authors I’ve browsed. 
+—Redditor /u/MirrorLake
+The book is very well-written; it’s the only one that kept me awake
+among all the Go books out there. 
+—Redditor /u/buondaveIntroduction
+Hello, and welcome to learning Go! It’s great to have you here.
+What’s this?
+This book is an introduction to the Go programming language, suitable for
+complete beginners. If you don’t know anything about Go yet, or
+programming, but would like to learn, you’re in the right place.
+If you do already have some experience with Go, or with programming in
+other languages, don’t worry: this book is for you too! You’ll learn some
+ideas, techniques, and ways of tackling problems that even many advanced
+Go programmers don’t know. I hope to also help you fill in a few gaps in
+your knowledge that you may not even be aware of.
+This book will introduce you to Go, and teach you all the fundamentals you
+need to know in order to start writing great software. By the time you’ve
+worked your way through it, you’ll be ready to move on to more advanced
+topics, and you’ll find plenty in my other Go books, collected as The
+Complete Go Library.
+Before we start, though, please take a moment to subscribe to my newsletter
+—it’s free, and it’s also the best way for you to stay up to date with mylatest books, tutorials, and blog posts:
+https://bitfieldconsulting.com/subscribe
+What you’ll need
+You’ll need to install Go on your computer, if you don’t have it already.
+Follow the instructions on the Go website to download and install Go:
+https://go.dev/learn/
+While all you need to write and run Go programs is a terminal and a text
+editor, you’ll find it very helpful to use an editor that has specific support
+for Go. For example, Visual Studio Code has excellent Go integration.
+While not essential, it’s a great idea to use some kind of version control
+software (for example, Git) to track and share your source code. I won’t go
+into the details of how to install and use Git in this book, but if you’re not
+already familiar with it, I recommend you learn at least the basics. Go to
+GitHub to find out more.
+Where to find the code examples
+There are dozens of challenges for you to solve throughout the book, each
+designed to help you test your understanding of the concepts you’ve just
+learned. If you run into trouble, or want to check your code, each challenge
+is accompanied by a complete sample solution, with tests.
+All these solutions are also available in a public GitHub repo here:
+https://github.com/bitfield/love
+Each listing in the book is accompanied by a GitHub link with its name and
+number (for example, Listing hello/1, and clicking it will take you straight
+to the code for that program.What you’ll learn
+By reading through this book and completing the exercises, you’ll learn:
+How to manage data in Go using built-in types, user-defined struct
+types, and collections such as maps and slices
+How to write and test functions, including functions that return
+multiple results and error values
+How to use objects to model problems in Go, and how to add
+behaviour to objects using methods
+How to use pointers to write methods that modify objects, and how to
+use types and validation to make your Go packages easy to use
+How to read and write persistent data from disk files, and how to
+encode and decode data from JSON format
+How to use Go’s built-in testing framework to write powerful, reliable
+tests, including test helpers and self-cleaning temporary directories
+How to design useful abstractions and interfaces, creating robust and
+re-usable software components that you can publish to the universal
+library of Go packages
+How to write and test concurrent programs, understand the behaviour
+of goroutines and the Go scheduler, and how to use mutexes to
+synchronise access to shared data and avoid data races
+How to write HTTP servers and clients, build safe and reliable
+distributed systems, and design flexible, powerful APIs and network
+services
+How to use this bookThroughout this book we’ll be working together to develop a project in Go.
+Each chapter introduces a new feature or concept, and sets you some goals
+to achieve. Goals are marked with GOAL in bold.
+Each goal also comes with one or more hints, in case you’d like a little
+assistance, and once you’ve either solved the problem or given up in
+disgust, there’s a complete solution for you to look at. Don’t you hate books
+that have questions, but no answers? So do I.
+The love of Go
+Go is an unusually fun and enjoyable language to write programs in, and I
+hope to communicate something of my own love of Go to you in this book.
+It’s a relatively simple language, though “simple” isn’t the same as “easy”.
+Programming is not easy, and no language makes it easy. Some just make it
+a little more fun than others.
+Let’s get started!

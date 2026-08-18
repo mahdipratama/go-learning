@@ -1,0 +1,703 @@
+6. Objects behaving badly
+In the previous chapter we did some useful work building a more efficient
+data structure to store our books, turning catalog into a map of books by
+ID. That’s great, but our code is starting to look a bit cluttered up with
+paperwork.
+For example, every time we call a function involving the catalog, we have
+to pass catalog as one of the arguments:
+Objects and methods
+catalog := books.GetCatalog() 
+books.AddBook(catalog, newBook) 
+book, ok := books.GetBook(catalog, newBook.ID) 
+for _, book := range books.GetAllBooks(catalog) { 
+    // and so on 
+}Fortunately, Go provides a way to express the same idea more concisely,
+using methods.
+A method is just like a function—indeed, it is a function—except that it’s
+specialised to a particular data type. You could think of it as a way to use
+that data.
+For example, if you have some Catalog variable representing a book
+catalog, in what ways would you like to use that catalog? One way might be
+to add a book to it. So, it would be nice to be able to write something like
+this:
+And that’s exactly what we can do if we turn AddBook into a method. By
+associating the AddBook function with the Catalog type, we make it a
+method that you can only call on a particular instance: that is, a particular
+catalog value.
+Methods are purely for convenience and readability: they’re a shorter way
+of writing the function call, and one that makes it obvious that we’re doing
+something to catalog: in this case, adding a book.
+The value that we’re calling methods on is sometimes called an object: that
+term doesn’t have any special meaning to Go, but it reminds us that this
+isn’t just some static data value, it’s an individual entity with a unique
+configuration and an internal state that changes over time, just like objects
+in the real world.
+I sometimes think of methods as “knobs”, like the controls on a physical
+device such as a stove or an amplifier. They’re things you can twiddle to
+change the way the object operates. Methods don’t necessarily change the
+object, though; they can also just be a way of accessing its information, like
+a temperature gauge or a volume indicator.
+The mysterious testing.T
+catalog := books.GetCatalog() 
+catalog.AddBook(newBook)And, as complicated and unfamiliar as that might sound, we’ve actually
+been using objects and methods all along, without necessarily being aware
+of it. For example, consider this test:
+(Listing books/14)
+And let’s take a closer look at what’s happening with this mysterious
+parameter t. First, we do something with it that makes this test run in
+parallel:
+We’ve seen function calls before where the name of the function is prefixed
+by some package: for example, fmt.Println is in the fmt package. That’s
+not what this is, though; there’s no package called t.
+Instead, t is a parameter, so it contains some Go value—some data, in other
+words. When we use t as a prefix to a function name like Parallel, we’re
+calling the function on that value: that is, whatever t contains.
+Parallel, in fact, is not an ordinary function like those we’ve written
+before. It can only be called on a value of type *testing.T, so we say that 
+Parallel is a method of this type.
+And later on, when we want the test to fail, we call another method on t:
+func TestGetBook_ReturnsFalseWhenBookNotFound(t *testing.T) { 
+    t.Parallel() 
+    catalog := getTestCatalog() 
+    _, ok := books.GetBook(catalog, "nonexistent ID") 
+    if ok { 
+        t.Fatal("want false for nonexistent ID, got true") 
+    } 
+}
+t.Parallel()You might wonder why the t is needed at all. Why aren’t these methods
+functions in the testing package? Couldn’t we call instead, for example:
+That would tell Go that some test has failed, but not which one: clearly,
+that’s something it would be useful to know.
+Methods are syntactic sugar for functions
+Since the t parameter already plays this role, we could imagine passing it to
+the function as an argument, like this:
+And, actually, that’s exactly what we do, except that using the method
+syntax makes our code a little more concise:
+The method notation (t.Fatal()) is what’s called syntactic sugar: a sweet
+shorthand for passing the t as the first argument to the function. Under the
+hood, Go transforms our method call into a plain old function where the t is
+the first argument.
+How does this work, exactly? Can we turn any function call into a method
+call? For example, could we turn fmt.Println("hello") into:
+No, that’s an error:
+t.Fatal("want false for nonexistent ID, got true")
+testing.Fatal("oh no")
+testing.Fatal(t, "oh no")
+t.Fatal("oh no")
+"hello".Println()"hello".Println undefined (type untyped string has no field or 
+method Println)
+Instead, we have to define functions in a special way to turn them into
+methods. Let’s see how to do this with our BookToString function, for
+example.
+Turning BookToString into a method
+We’re saying that instead of passing some Book value to the function, we’d
+like to be able to call the function as a method on some Book. Instead of:
+we’d like to be able to write:
+In fact, let’s shorten it to String, to avoid repeating ourselves:
+That looks nice, but how do we change the function definition to make this
+possible? Here’s what we have right now:
+(Listing books/14)
+Turning this into a method means promoting the book parameter to what’s
+called the method’s receiver: not any old parameter, in other words, but the
+fmt.Println(books.BookToString(book))
+fmt.Println(book.BookToString())
+fmt.Println(book.String())
+func BookToString(book Book) string { 
+    return fmt.Sprintf("%v by %v (copies: %v)",
+        book.Title, book.Author, book.Copies) 
+}most important parameter of all.
+(Listing books/15)
+All we’ve done is move the book parameter from after the function name to
+before it, but that makes all the difference. It tells Go that String must be
+called on some Book value, and inside the body of the method, that value is
+available as book.
+Now we’re able to write:
+That’s nice, but in this particular case we can do even better. It’s so
+common to need to stringify values that fmt.Println will automatically call
+a method named String if one exists. So, now that we’ve provided such a
+method, we can pass the book value directly:
+The fmt package can always figure out a sensible way to print something,
+but if we’ve defined a String method for the type, that will be used instead.
+Now we can tidy up our list and find tools to use the new, more concise
+syntax. For example, here’s list:
+func (book Book) String() string { 
+    return fmt.Sprintf("%v by %v (copies: %v)",
+        book.Title, book.Author, book.Copies) 
+}
+fmt.Println(book.String())
+fmt.Println(book)
+func main() { 
+    catalog := books.GetCatalog() 
+    for _, book := range books.GetAllBooks(catalog) { Adding methods to the catalog
+Very neat. So, could we use the same trick with the functions that take 
+catalog, and turn them into methods too? Here’s our current version of 
+GetAllBooks, for example:
+(Listing books/14)
+Methods can only be added to local types
+We know the rule for turning a function into a method: move the catalog
+parameter before the function name.
+So, can we do this, for example?
+It looks okay at first sight, but Go isn’t happy about it:
+invalid receiver type map[string]Book
+It turns out there’s one more thing we need to know about methods: we can
+only define them on our own, “local” types—that is, types we’ve defined in
+the same package.
+        fmt.Println(book) 
+    } 
+}
+func GetAllBooks(catalog map[string]Book) []Book {
+    return slices.Collect(maps.Values(catalog)) 
+}
+func (catalog map[string]Book) GetAllBooks() []Book { 
+    return slices.Collect(maps.Values(catalog)) 
+}We can’t add a method to a built-in type like string for the same reason:
+Defining a new type
+In a sense, the methods available on a given type are part of that type’s
+definition. We can’t change someone else’s type by adding our own
+methods to it: that would be like building an extension on your neighbour’s
+house without their permission.
+But there’s an easy way around this: we can define a new type, and then
+we’re allowed to add methods to it. When the house is our own, we can
+build any extensions we want.
+Let’s go ahead and create a new type Catalog, then:
+(Listing books/15)
+Now we can rewrite GetAllBooks as a method with no problems:
+(Listing books/15)
+Note that we have to use the type name Catalog for the receiver, though. We
+can’t say instead map[string]Book here, because Catalog isn’t a new name
+func (s string) Print() { 
+    fmt.Println(s) 
+} 
+// cannot define new methods on non-local type string
+type Catalog map[string]Book
+func (catalog Catalog) GetAllBooks() []Book { 
+    return slices.Collect(maps.Values(catalog)) 
+}for that type, it’s a whole new type of its own.
+The GetBook and AddBook methods
+GOAL: Go ahead and make the necessary changes to turn GetBook and 
+AddBook into methods on Catalog too, and fix the tests.
+HINT: You know how to change the function signatures, in the same way
+as we did for GetAllBooks, and you’ll also need to change all references to 
+map[string]Book to Catalog to make this work. Don’t forget to update the
+tests, and the code for the list and find tools, to use the new method calls
+instead of function calls.
+SOLUTION: Here’s the updated version of GetBook:
+(Listing books/15)
+Here’s AddBook:
+(Listing books/15)
+Now we need to update the tests accordingly:
+func (catalog Catalog) GetBook(ID string) (Book, bool) { 
+    book, ok := catalog[ID] 
+    return book, ok 
+}
+func (catalog Catalog) AddBook(book Book) { 
+    catalog[book.ID] = book 
+}func TestGetAllBooks_ReturnsAllBooks(t *testing.T) { 
+    t.Parallel() 
+    catalog := getTestCatalog() 
+    want := []books.Book{ 
+        { 
+            Title:  "In the Company of Cheerful Ladies", 
+            Author: "Alexander McCall Smith", 
+            Copies: 1, 
+            ID:     "abc", 
+        }, 
+        { 
+            Title:  "White Heat", 
+            Author: "Dominic Sandbrook", 
+            Copies: 2, 
+            ID:     "xyz", 
+        }, 
+    } 
+    got := catalog.GetAllBooks() 
+    slices.SortFunc(got, func(a, b books.Book) int { 
+        return cmp.Compare(a.Author, b.Author) 
+    }) 
+    if !slices.Equal(want, got) { 
+        t.Fatalf("want %#v, got %#v", want, got)
+    } 
+} 
+ 
+func TestGetBook_FindsBookInCatalogByID(t *testing.T) { 
+    t.Parallel() 
+    catalog := getTestCatalog() 
+    want := books.Book{ 
+        ID:     "abc", 
+        Title:  "In the Company of Cheerful Ladies",         Author: "Alexander McCall Smith", 
+        Copies: 1, 
+    } 
+    got, ok := catalog.GetBook("abc") 
+    if !ok { 
+        t.Fatal("book not found") 
+    } 
+    if want != got { 
+        t.Fatalf("want %#v, got %#v", want, got)
+    } 
+} 
+ 
+func TestGetBook_ReturnsFalseWhenBookNotFound(t *testing.T) { 
+    t.Parallel() 
+    catalog := getTestCatalog() 
+    _, ok := catalog.GetBook("nonexistent ID") 
+    if ok { 
+        t.Fatal("want false for nonexistent ID, got true") 
+    } 
+} 
+ 
+func TestAddBook_AddsGivenBookToCatalog(t *testing.T) { 
+    t.Parallel() 
+    catalog := getTestCatalog() 
+    _, ok := catalog.GetBook("123") 
+    if ok { 
+        t.Fatal("book already present") 
+    } 
+    catalog.AddBook(books.Book{ 
+        ID:     "123", 
+        Title:  "The Prize of all the Oceans", 
+        Author: "Glyn Williams", (Listing books/15)
+This in turn means a change to getTestCatalog:
+(Listing books/15)
+Updating the tools
+        Copies: 2, 
+    }) 
+    _, ok = catalog.GetBook("123") 
+    if !ok { 
+        t.Fatal("added book not found") 
+    } 
+}
+func getTestCatalog() books.Catalog { 
+    return books.Catalog{ 
+        "abc": { 
+            Title:  "In the Company of Cheerful Ladies", 
+            Author: "Alexander McCall Smith", 
+            Copies: 1, 
+            ID:     "abc", 
+        }, 
+        "xyz": { 
+            Title:  "White Heat", 
+            Author: "Dominic Sandbrook", 
+            Copies: 2, 
+            ID:     "xyz", 
+        }, 
+    } 
+}Then, we’ll update the main function for the list tool:
+(Listing books/15)
+and for find:
+(Listing books/15)
+Finally, we need to change GetCatalog to return the new type:
+func main() { 
+    catalog := books.GetCatalog() 
+    for _, book := range catalog.GetAllBooks() { 
+        fmt.Println(book) 
+    } 
+}
+func main() { 
+    if len(os.Args) != 2 { 
+        fmt.Println("Usage: find <BOOK ID>") 
+        return 
+    } 
+    catalog := books.GetCatalog() 
+    ID := os.Args[1] 
+    book, ok := catalog.GetBook(ID) 
+    if !ok { 
+        fmt.Println("Sorry, I couldn't find that book in the 
+catalog.") 
+        return 
+    } 
+    fmt.Println(book) 
+}(Listing books/15)
+Pointers
+Although there are quite a few small changes here, they’re pretty
+superficial: as we’ve seen, methods are really syntactic sugar for functions
+where one of the parameters is given a special importance.
+Objects as abstractions
+In another way, though, the changes we’ve made are fundamental, because
+now the Book and Catalog types are not merely a way of storing data.
+Adding methods to them gives them behaviour: they can do things. A 
+Catalog is not just a passive bunch of books: it also knows how to add and
+retrieve books from itself, and how to list all the books it contains.
+func GetCatalog() Catalog { 
+    return Catalog{ 
+        "abc": { 
+            Title:  "In the Company of Cheerful Ladies", 
+            Author: "Alexander McCall Smith", 
+            Copies: 1, 
+            ID:     "abc", 
+        }, 
+        "xyz": { 
+            Title:  "White Heat", 
+            Author: "Dominic Sandbrook", 
+            Copies: 2, 
+            ID:     "xyz", 
+        }, 
+    } 
+}Values like this, that encapsulate both data and behaviour, are sometimes
+known as objects, though that’s not a term that has any special meaning in
+Go. It’s a way of thinking about programs, or, more specifically,
+abstractions.
+We saw in a previous chapter that abstractions are useful for making
+programs easier to write and reason about, because they hide irrelevant
+details behind a simple interface. A function is the simplest kind of
+abstraction, but an object is a more sophisticated one.
+You could think of objects as “smart data”: data that knows how to
+manipulate itself in useful ways. Alternatively, you could regard an object
+as “stateful code”: not solely a collection of related functions plus static
+data, but a unique entity that can change and develop over its “lifetime”.
+Validation
+One very useful thing that objects can do to be smart about their data is to
+validate it. For example, it might already have struck you that it’s possible
+to set the Copies field of a book to a negative number:
+Go’s int type represents whole numbers in general, and whole numbers can
+be negative, so this is allowed. But it doesn’t really make sense for a
+number representing copies of a book to be negative. What would that even
+mean? We’re describing a number of physical things, and there can’t be less
+than zero copies of a book. So, in this context, book.Copies is invalid: it
+can’t be correct.
+We could add checks throughout the bookstore code to make sure that every
+time we deal with some Book value, it has a non-negative number of copies.
+But it would be annoying and wasteful to repeat that checking code in many
+places, and we might also want to validate other fields besides Copies.
+Also, we’d like to be able to publish the books package as an open-source
+software component that other people can import and use in their own Go
+book.Copies = -1 // apparently this is fine?programs that deal with book information. It would be a shame if we put a
+similar burden of constant checking and re-checking on those users, and if
+they forgot to do it in even one place, their programs could produce
+incorrect results.
+The fundamental problem here is that it’s possible to create a Book value
+that is invalid, whatever we’ve decided “invalid” means in this context.
+Right now, one way that we’ve identified for books to be invalid is for them
+to have a negative number of copies.
+Ideally, we’d eliminate this problem by making it impossible for users
+(including us, as we’re working on the bookstore code) to set Copies to a
+negative number.
+But how can we prevent people from setting the Copies field to any int
+value that they like? There doesn’t seem to be a way to do that in Go.
+And there isn’t, at least not directly, so we’ll have to be a bit more creative.
+What if, instead of setting the Copies field by using an assignment
+statement, we provided a method that would set Copies for us? In other
+words, what if we could write code like this to update the book:
+If we had a SetCopies method that took some int parameter, then we could
+do the validation—checking that it’s not negative—in one place, once and
+for all, and it would be used automatically every time someone updated the
+number of copies of a book.
+A non-validating SetCopies method
+Before we start thinking about the validation, let’s try to write the simple-
+minded version of SetCopies: one that updates the Copies field to whatever
+we pass it, without trying to check whether it’s negative. We’ll start with a
+test:
+book.SetCopies(12)This doesn’t seem unreasonable, does it? We create a new Book value, not
+bothering to set any of the fields except Copies, because we don’t care
+about them for this test.
+We set the initial Copies to 5, and then we call SetCopies(12). After this,
+we feel justified in asserting that book.Copies should be 12. If not, why not?
+As usual, let’s check the test by writing a stub version of SetCopies that
+does nothing:
+This should fail the test, we think, and indeed that’s the case:
+want 12 copies, got 5
+Let’s go ahead and have SetCopies actually update the number of copies:
+Does this pass the test?
+func TestSetCopies_SetsNumberOfCopiesToGivenValue(t *testing.T) { 
+    t.Parallel() 
+    book := books.Book{ 
+        Copies: 5, 
+    } 
+    book.SetCopies(12) 
+    if book.Copies != 12 { 
+        t.Errorf("want 12 copies, got %d", book.Copies) 
+    } 
+}
+func (book Book) SetCopies(copies int) {}
+func (book Book) SetCopies(copies int) { 
+    book.Copies = copies 
+}want 12 copies, got 5
+Hmm. It seems we have a problem. The code looks correct, so let’s add
+some print statements to help debug what’s going on:
+This is often a helpful way to figure out exactly why code isn’t behaving as
+we expect. Here’s the output when we run the test:
+before update, book.Copies = 5 
+after update, book.Copies = 12 
+--- FAIL: TestSetCopies_SetsNumberOfCopiesToGivenValue (0.00s) 
+    books_test.go:89: want 12 copies, got 5
+Even more puzzling! It seems that, after we set book.Copies inside the
+method, the value is indeed correct. Yet, when we return from SetCopies,
+the value of Copies appears to have changed back to its original value.
+What’s going on?
+Assignment creates a copy
+To understand that, we need to know a little about how Go manages data in
+your computer’s memory. In an earlier chapter, we talked about variables,
+and we said that a variable is a way of giving a name to a particular data
+value in your program:
+This creates the variable x and assigns the value 5 to it. But what if we now
+create another variable y, and assign x to it?
+func (book Book) SetCopies(copies int) { 
+    fmt.Println("before update, book.Copies =", book.Copies) 
+    book.Copies = copies 
+    fmt.Println("after update, book.Copies =", book.Copies) 
+}
+x := 5What value does y contain? That’s easy, right? It’s 5.
+What happens if we change the value of x? Does it also affect y?
+No, it doesn’t. Even though we’ve now set x to 10, the value of y is still 5,
+as it was before.
+The assignment statement y := x doesn’t create any kind of relationship
+between the variables y and x. Instead, it copies whatever value happens to
+be in x at the time of the assignment into y. Subsequent changes to x affect
+only x.
+The same thing happens when we pass a variable such as x to a function (or
+a method, which is a function that’s associated with a particular type, like 
+Book). The value of x gets copied, and the function receives a copy in its
+parameter. For example:
+y := x
+fmt.Println(y)
+// Output: 
+// 5
+x = 10 
+fmt.Println(y)
+// Output: 
+// 5
+func display(value int) { 
+    fmt.Println(value) // `value` is a copy of whatever was 
+passed 
+}It follows, then, that if we modify that parameter inside the function, that
+change has no effect on the original variable that we got a copy of.
+Pointers are references
+Now that we know this, it’s clear that our SetCopies method suffers from
+the same problem:
+In fact, if you’re using an editor or IDE with Go language support, you’ll
+get a warning about this line to that effect:
+As usual, this is a bit cryptic if you don’t know what’s going on, but now
+we do. The SetCopies method is free to change its book parameter as much
+as it wants, but the changes don’t affect the original Book that the method
+was called on: only the local copy. When the method returns, the contents
+of the book parameter will be lost.
+That’s no use for a validation method, so how can we make it possible for 
+SetCopies to make lasting changes to the Book we call it on?
+func display(value int) { 
+    value = 0 // only affects our local copy, not the original 
+}
+func (book Book) SetCopies(copies int) { 
+    book.Copies = copies // only affects local `book`, not the 
+original 
+}
+func (book Book) SetCopies(copies int) { 
+    book.Copies = copies // unusedwrite: unused write to field 
+Copies 
+}Luckily, Go provides a way to do this, using a type called a pointer. Think
+of a pointer value as a reference to some variable, rather than a copy of its
+value. Here’s an example:
+Here, we’re setting up some variable x whose value is 5, and then we’re
+creating a pointer to that variable, with this line:
+The & and * operators
+The & is Go’s address operator. Instead of copying the value in x, it creates a
+pointer to x and stores it in the variable y. In effect, we’ve set up a
+permanent relationship between y and x. As the value of x changes over
+time, we’ll see those changes reflected when we use the y pointer:
+Here’s another new piece of syntax: *y dereferences y. That is, it retrieves
+the value that y “points” to (in this case, the contents of x).
+This might sound very abstract and complicated, so let’s think about a real-
+world analogy. Suppose I publish a fascinating blog post about Go,
+explaining all about pointers and values. And suppose you’re inspired by
+this to write your own post (I hope you will be!)
+x := 5 
+y := &x // `y` is a pointer to `x` 
+x = 10 
+fmt.Println(*y) // asking "what value does `y` point to?" 
+// Output: 
+// 10
+y := &x
+fmt.Println(*y)You might wish to quote my article, and you could do that by copying and
+pasting the text into your own piece. This is like a straightforward value
+assignment in Go: y := x.
+If I edit and update my post in the future, which is quite likely, then your
+copy of it will be out of date. So, instead of copying it, you could use a web
+link instead:
+https://bitfieldconsulting.com/posts/pointers
+This is like using the address operator in Go to set up a link between two
+variables: y := &x.
+When your readers follow the link, they’ll see whatever the current contents
+of my post are. If I change it, and they follow the link again, they’ll see
+those changes, too. This is like dereferencing a Go pointer:
+The relationship works both ways: if we change the value the pointer points
+to, then we also change the original.
+For example, if we change the value of *y, it stands to reason that x is
+updated, too. The two variables are still linked:
+And that’s what we want for our SetCopies method, isn’t it? If it took as its
+receiver, not a Book, but a pointer to Book, then the change we make in the
+method will affect the original.
+We could write something like this:
+fmt.Println(*y)
+*y = 20 
+fmt.Println(x)
+// Output: 
+// 20Notice that the receiver book has changed from a Book to a *Book.
+First, we dereference the book pointer to get the original Book struct, with 
+(*book). Then we update its Copies field to the value we want.
+So, what type is a pointer? That is to say, if we had to declare a variable that
+stores pointers, which we will, what type would we declare for it?
+Here, the type of y is *int (pronounced “pointer to int”). This time, the *
+operator isn’t dereferencing anything: it signifies “pointer”.
+There isn’t a single “pointer” type: instead, the type of a pointer variable is
+“pointer to some other type” (for example, int). Or, in the case of our 
+SetCopies method, “pointer to Book”; that is, *Book.
+Automatic dereferencing of struct pointers
+This passes the test, and it’s fine, but it’s a little awkward that we have to
+use parentheses here:
+Fortunately, we use pointers to structs so often that Go provides an
+automatic dereferencing shorthand, to make this easier to write:
+func (book *Book) SetCopies(copies int) { 
+    (*book).Copies = copies 
+}
+x := 5 
+var y *int 
+y = x
+(*book).Copies = copies
+book.Copies = copiesPointers can’t have fields, so there’s no ambiguity here: Go knows that if 
+book is a pointer, then book.Copies must refer to a field on whatever struct
+value book points to.
+Adding validation to SetCopies
+Sorry about that lengthy detour to introduce and explain pointers, but it was
+an important one. Without pointers, we can’t write methods that modify
+their receiver. And without pointer methods (that is, methods whose
+receivers are pointers, as opposed to values), we can’t write validating
+methods, which is what we set out to do.
+When validation fails
+And we could add some validation logic to SetCopies now, but there’s a
+slight problem. What should happen if the provided copies value is invalid?
+We have some options. For one thing, we could have SetCopies panic if the
+validation fails. That would certainly prevent programs from creating
+invalid Book values, but we don’t really want to stop the programs
+altogether. It would be better if SetCopies returned some value indicating
+whether or not the validation succeeded. That’s because there’s no point
+checking that something is valid unless there’s a way to do something about
+it if it’s not.
+For example, suppose we write a program that lets users enter the details of
+new books in stock. If they accidentally type “-1” for the number of copies,
+we’d like to be able to detect that invalid entry and invite them to correct it,
+instead of crashing and losing all the work they’ve done so far. In general,
+well-written programs don’t crash, unless there’s really no alternative.
+What should we return as our “valid or not valid” signal? We could use 
+bool, as we did with GetBook to indicate whether or not the requested book
+book.SetCopies(-1) // what should happen here?was found in the catalog. After all, there are two possible outcomes of
+calling SetCopies: either the value was valid or it wasn’t. We could
+represent those as true and false, respectively.
+That’s not terrible, but if we return just false when the value fails
+validation, we can’t include any information about why it was invalid. Yes,
+in this context there’s only one way that copies could be invalid: because
+it’s negative. But we could imagine other ways (for example, maybe the
+user entered “banana” instead of a number).
+Ideally, we’d like a solution that works for all kinds of validating methods,
+and that means being able to include a message explaining why a given
+value isn’t valid.
+Returning errors
+Go has a special type for exactly this kind of situation: it’s called error. We
+can use error values to indicate whether or not some operation went wrong,
+and if it did, what specifically went wrong. Here’s an example:
+Here, we’re calling SetCopies on some book with a sketchy input (-1), and
+we’re receiving some return value which we assign to the variable err. That
+name doesn’t have any special meaning, but error variables in Go are
+conventionally called err, so we’ll follow the convention.
+Now, if the call to SetCopies succeeds—that is, if there’s no error to report
+—then err will have the special value nil, meaning “no error”.
+On the other hand, if it’s any value other than nil, that means some error
+happened, and the value of err will explain what it was. We can then print
+that value using fmt.Println, for example.
+err := book.SetCopies(-1) 
+if err != nil { 
+    fmt.Println("Oh dear, something went wrong:", err) 
+}So, if we’re going to have SetCopies return an error value, then we first of
+all need to update our existing test. This is a happy-path test, remember,
+meaning that we’re calling SetCopies with a valid number. So, in this case
+the err result should certainly be nil. If it’s not, we should fail the test:
+(Listing books/16)
+This is a more complex test than before, because we’re saying that 
+SetCopies now does two things if the input is valid: first, it returns a nil
+value for the error, and secondly, it updates book.Copies.
+Let’s update SetCopies to pass this test, then:
+func TestSetCopies_SetsNumberOfCopiesToGivenValue(t *testing.T) { 
+    t.Parallel() 
+    book := books.Book{ 
+        Copies: 5, 
+    } 
+    err := book.SetCopies(12) 
+    if err != nil { 
+        t.Fatal(err) 
+    } 
+    if book.Copies != 12 { 
+        t.Errorf("want 12 copies, got %d", book.Copies) 
+    } 
+}
+func (book *Book) SetCopies(copies int) error { 
+    book.Copies = copies 
+    return nil 
+}Notice that now this method returns a result, of type error, and at the end of
+the method we explicitly return nil as that result.
+Testing for a validation error
+This passes the test, but we don’t actually do any validation yet, so we’ll
+need a test for that, too.
+In the new test, we’ll pass some invalid value to SetCopies, and we’ll test
+that the result is not nil.
+(Listing books/16)
+We needn’t bother setting the Copies field to any initial value, since we
+won’t be checking it afterwards: it shouldn’t have changed. All we care
+about is that the err result is not nil. If it is nil, then there’s something
+wrong with SetCopies, so we fail the test and report that fact.
+Naturally enough, this test doesn’t pass with the current version of 
+SetCopies, since the result is always nil, no matter what. We need to add
+some code to detect invalid inputs, and return some error in that case.
+Creating error values
+So, how do we create an error value when we need one? One way is to
+import the standard library’s errors package, and call errors.New:
+func TestSetCopies_ReturnsErrorIfCopiesNegative(t *testing.T) { 
+    t.Parallel() 
+    book := books.Book{} 
+    err := book.SetCopies(-1) 
+    if err == nil { 
+        t.Error("want error for negative copies, got nil") 
+    } 
+}The error value created by errors.New is certainly not nil, so it would pass
+our sad-path test. If we printed it with fmt.Println, it would show exactly
+the string that we started with:
+That’s okay, but we can do a little more. We can also include formatted
+information in the error, using the fmt.Errorf function:
+This sounds like the thing we want for SetCopies, so let’s try it:
+import "errors" 
+... 
+return errors.New("invalid number of copies")
+err := errors.New("invalid number of copies") 
+fmt.Println(err) 
+// Output: 
+// invalid number of copies
+err := fmt.Errorf("negative number of copies: %d", -1) 
+fmt.Println(err) 
+// Output: 
+// negative number of copies: -1
+func (book *Book) SetCopies(copies int) error { 
+    if copies < 0 { 
+        return fmt.Errorf("negative number of copies: %d", 
+copies) 
+    } 
+    book.Copies = copies 
+    return nil 
+}(Listing books/16)
+This passes both SetCopies tests, so it looks like we’re in great shape!
+Here’s what we know so far
+It’s been a busy chapter, as you’ve now mastered two key concepts in Go:
+methods and pointers. You understand that methods are “syntactic sugar”
+for functions that take their first parameter as a receiver, meaning the thing
+that the method is about. For example, all the methods on Catalog take a
+catalog as their receiver.
+You’ve connected this to your existing knowledge about the testing
+package, and you can now recognise calls such as t.Fatal as referring to
+methods on the *testing.T object: the thing that uniquely identifies each
+test and controls its execution.
+You also learned what a pointer is, and why we might want to use one in a
+Go program. When a function takes some value parameter, it gets a
+transient copy of the data, and can’t make lasting changes to it. When it
+takes a pointer parameter, though, it’s getting a reference to the original
+data, and can use that reference to modify it permanently.
+You know that we can use the & (address) operator to create a pointer to a
+value, and the * (dereference) operator to find the value that a pointer points
+to. And you also know that when this value is a struct, we don’t need to
+bother with the *: we can refer to fields directly, and Go will take care of
+the dereferencing for us.
+Nice job! In the next chapter, let’s turn to the question of how to update
+book information in the catalog, and how to make those changes stick.

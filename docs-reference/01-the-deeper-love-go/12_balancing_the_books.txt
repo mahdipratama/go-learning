@@ -1,0 +1,646 @@
+12. Balancing the books
+We’ve done a lot of useful groundwork in the previous chapter, and we’re a
+long way towards having the “list all books” feature of the API server
+working. We’ve written a test that starts a unique instance of the server on a
+random free port, connects to it and requests the list of books, then decodes
+the response and checks it against the test catalog.
+A bookstore API server
+As expected, this test fails against a server that returns the wrong answer
+(such as “Hello, world”), so we’re ready to implement the real server.
+The “Hello, world” version
+As a reminder, here’s our sketch of a server program from the previous
+chapter:
+func main() { 
+    http.ListenAndServe(":3000", http.HandlerFunc(hello)) 
+} 
+ 
+func hello(w http.ResponseWriter, r *http.Request) { (Listing hello/7)
+Our handler for the bookstore API will need to do a little more than this 
+hello function does, but we’ll use the same basic idea: define a handler
+function, and use http.ListenAndServe to invoke it for requests.
+In fact, let’s start by having it serve “Hello, world” and see if we can get
+that working first.
+If we run the test now, we should see exactly the same failure we did before
+when the “hello, world” server was accidentally running: a JSON decoding
+error on that first H character. Here we go:
+invalid character 'H' looking for beginning of value in "Hello, 
+world\n"
+Great. Now we’re running a real server in the test: it’s just returning the
+wrong data. Instead of “hello, world”, we want it to respond with a JSON-
+encoded slice of books from the catalog. We have all the pieces we need to
+do this; it’s now just a case of slotting them together.
+Accessing the catalog in a handler
+    fmt.Fprintln(w, "Hello, world") 
+}
+func ListenAndServe(addr string, catalog *Catalog) error { 
+    return http.ListenAndServe(addr, http.HandlerFunc(hello)) 
+} 
+ 
+func hello(w http.ResponseWriter, r *http.Request) { 
+    fmt.Fprintln(w, "Hello, world") 
+}There’s one problem to solve first, though. As you may have noticed, we
+have two functions in the current server code: ListenAndServe, which takes
+the catalog, and hello, which doesn’t.
+But hello (or whatever function we use as the handler for this request)
+needs to access  the catalog, doesn’t it? For example, we might want to write
+something like this:
+But that doesn’t compile, because the catalog variable is not in scope here.
+It exists only inside ListenAndServe. To make it visible to other functions
+such as list, we could move it outside, making catalog a package-level
+variable. But should we?
+That would solve the problem of getting list to see the data, but it would
+introduce a new problem: there could only be a single catalog, and it would
+be shared between all servers and all tests. We already know that doesn’t
+work: it would put us right back where we started.
+A closure over catalog
+There is another answer. Remember how in the chapter on goroutines, we
+wrote a go statement using a function literal?
+func list(w http.ResponseWriter, r *http.Request) { 
+    books := catalog.GetAllBooks() // can't see `catalog` 
+    err := json.NewEncoder(w).Encode(books) 
+    if err != nil { 
+        panic(err) 
+    } 
+}
+copies := 1 
+go func() { 
+    if copies > 0 { 
+        ... // this function can see `copies` We didn’t say it explicitly, but a closur e  function like this has access to all
+the variables defined in the outer function’s scope. In this case, it’s only
+interested in copies, but it could, if it wanted to, see and modify any other
+variable from the outer function, too.
+That’s what we want here, too. We want to write a function literal that uses 
+catalog, like this:
+The syntax looks a bit hysterical, but that’s just because this function literal
+is a couple of levels deep in parentheses. It’s otherwise completely
+straightforward, and works just the same way as the equivalent hello or 
+list functions. The difference is that, being a closure, this  function can see
+and use catalog.
+Now we can substitute in the extra bit of code that uses json.NewEncoder to
+write to w, and encodes the result of calling GetAllBooks:
+    } 
+}()
+func ListenAndServe(addr string, catalog *Catalog) error { 
+    return http.ListenAndServe(addr, http.HandlerFunc( 
+        func(w http.ResponseWriter, r *http.Request) { 
+        ... // this function can see `catalog` 
+    })) 
+}
+func ListenAndServe(addr string, catalog *Catalog) error { 
+    return http.ListenAndServe(addr, http.HandlerFunc( 
+        func(w http.ResponseWriter, r *http.Request) { 
+        books := catalog.GetAllBooks() 
+        err := json.NewEncoder(w).Encode(books) 
+        if err != nil { 
+            panic(err) Did we get it right? The test should tell us:
+go test
+PASS
+A server program
+Now that we have a working server, we’ll need a command-line program to
+start and run the server for the real bookstore. That doesn’t sound too
+complicated, since we already know how to run the server: just call 
+ListenAndServe, and pass it a catalog.
+But which  catalog? In the programs we’ve written previously, such as list
+and copies, we’ve used OpenCatalog to get the data from our test catalog, in
+the testdata folder. That’s fine for testing, but in the real bookstore, users
+will need to be able to specify the catalog file when they start the server.
+Something like this, perhaps:
+go run ./cmd/server testdata/catalog
+In other words, we’ll have the server program take a file path as a
+command-line argument, and get the catalog data from this file using 
+OpenCatalog. Over to you now to see what you can come up with!
+GOAL: Write a suitable server program, in a cmd/server subfolder, that
+opens the catalog file specified on the command line, and serves it via
+HTTP.
+HINT: Once again, all the bits and pieces we need already exist in various
+examples and previous programs. The trick is putting them together. Start
+        } 
+    })) 
+}with our “hello, world” server example from the previous chapter as a
+template.
+We need to be able to get the program’s command-line argument, use 
+OpenCatalog to open the named file, and call ListenAndServe to start the
+server. Can you figure out what to do?
+SOLUTION: Here’s my version:
+package main
+ 
+import ( 
+    "books" 
+    "fmt" 
+    "os" 
+) 
+ 
+func main() { 
+    if len(os.Args) != 2 { 
+        fmt.Println("Usage: server <CATALOG FILE>") 
+        return 
+    } 
+    catalog, err := books.OpenCatalog(os.Args[1]) 
+    if err != nil { 
+        fmt.Printf("opening catalog: %v\n", err)
+        return 
+    } 
+    err = books.ListenAndServe(":3000", catalog)
+    if err != nil { 
+        fmt.Println(err) 
+    } 
+}(Listing books/19)
+As usual, it doesn’t matter if your program is slightly different. If it starts
+the server with the correct catalog data, it’s fine.
+It would be nice if the user could specify the port number, too, but let’s
+leave that for future enhancements: running on port 3000 will be fine for
+now. Let’s start this server with the test catalog:
+go run ./cmd/server testdata/catalog
+And, in another window or terminal, we’ll use curl to make the request and
+see what the response looks like (or you can use a web browser):
+curl localhost:3000
+[{"Title":"In the Company of Cheerful Ladies","Author":"Alexander 
+McCall Smith","Copies":1,"ID":"abc"},{"Title":"White Heat", 
+"Author":"Dominic Sandbrook","Copies":2,"ID":"xyz"}]
+It looks believable, doesn’t it? And we already know that this JSON data
+can be decoded into a slice of Book that matches the result of GetAllBooks
+on the catalog, because that’s what the test does.
+Rewriting list
+Which is just as well, since that’s what the new version of the list program
+will need to do, too. Let’s go ahead and write that now.
+As a quick reminder, here’s what we had before:
+package main
+ 
+import ( 
+    "books" 
+    "fmt" 
+) (Listing books/18)
+Not surprisingly, we need to make a few changes to reflect the fact that
+we’re not getting the catalog data from a local file anymore: we’re getting it
+via HTTP from a remote server.
+Here’s a quick sketch that could work:
+ 
+func main() { 
+    catalog, err := books.OpenCatalog("testdata/catalog") 
+    if err != nil { 
+        fmt.Printf("opening catalog: %v\n", err)
+        return 
+    } 
+    for _, book := range catalog.GetAllBooks() { 
+        fmt.Println(book) 
+    } 
+}
+package main
+ 
+import ( 
+    "books" 
+    "encoding/json" 
+    "fmt" 
+    "io" 
+    "net/http" 
+) 
+ 
+func main() { 
+    resp, err := http.Get("http://localhost:3000") 
+    if err != nil { It’s long, but there’s nothing here that we haven’t seen and done before. We
+make the request, check the response status, read the JSON data from the
+response body, unmarshal it into bookList, and then loop over the list
+printing each book. Let’s give it a try:
+go run ./cmd/list
+In the Company of Cheerful Ladies by Alexander McCall Smith 
+(copies: 1) 
+White Heat by Dominic Sandbrook (copies: 2)
+        fmt.Println(err) 
+        return 
+    } 
+    defer resp.Body.Close() 
+    if resp.StatusCode != http.StatusOK { 
+        fmt.Printf("unexpected status %d", resp.StatusCode) 
+        return 
+    } 
+    data, err := io.ReadAll(resp.Body) 
+    if err != nil { 
+        fmt.Println(err) 
+        return 
+    } 
+    bookList := []books.Book{} 
+    err = json.Unmarshal(data, &bookList) 
+    if err != nil { 
+        fmt.Printf("%v in %q", err, data) 
+        return 
+    } 
+    for _, book := range bookList { 
+        fmt.Println(book) 
+    } 
+}Handling different kinds of request
+We’re making rapid progress: we have both the client and the server code
+for the “list all books” feature. But we know we’d like to be able to do other
+things, too. For example, we’ll need to be able to get information on a
+specific book, using our find program.
+We have all the code we need to get a specific book by ID: that’s part of the 
+Catalog, and the server now has access to the catalog, so that’s no problem.
+But we have a couple of hurdles to get over before we can get find
+working.
+One is that right now the server always responds to any request with the list
+of all books. That’s fine for list, since that’s what it wants, but find needs
+a different response. It needs the server to send back information about
+exactly one  book, specified by its ID.
+We could write another server program, of course: one that treats every
+request as a “find” request. But it would be annoying to repeat all of the
+code involved in starting and running the server, and even worse, the two
+servers would be competing for access to the same catalog file. As soon as
+we wrote a server that could modify  the catalog, we’d have a data race, so
+that solution is no good.
+Much better would be a single server with exclusive access to the catalog,
+but one that could distinguish between two (or more) kinds of request: for
+now, “find” requests and “list” requests. Then it could respond to each with
+the appropriate data: the list of all books, for “list” requests, or the data on a
+specific book, for “find” requests.
+How could the client  convey to the server which kind of request it’s
+making? One idea is to include that information in the URL. Recall from
+the previous chapter that a URL identifies not only some server (specified
+by host address and port number), but also some specific r esour ce ,
+identified by name (called the URI).
+Including the request type in the URL“Resource” means whatever we want it to mean, so instead of a particular
+document or file, for example, we could make it the “kind” of request that
+the client is sending. So, for example, we could say that “list” requests
+would use this URL:
+http://localhost:3000/list
+Here, the URI part identifying the resource is /list. By replacing the word 
+list with find, copies, or whatever we want, we can create any number of
+different kinds of requests. The server only needs to look at the URL to
+know which sort of request it is.
+And we already know that a handler function has access to the request, as r.
+The URL is available as r.URL, so we could imagine writing code like this:
+In this way a single function could respond to requests for multiple API
+verbs, or endpoints , including list, find, or whatever we want. But it
+would be a little tedious to keep writing if ... else if statements to
+match all these, and fortunately we don’t have to.
+Multiplexing with ServeMux
+Distinguishing between different kinds of requests, and routing each to a
+request-specific handler, is called multiplexing , and Go’s http package
+func handle(w http.ResponseWriter, r *http.Request) { 
+    if r.URL.Path == "/list" { 
+        fmt.Fprintln(w, "You asked for /list") 
+    } else if r.URL.Path == "/find" { 
+        fmt.Fprintln(w, "You asked for /find") 
+    } else { 
+        fmt.Fprintln(w, "You asked for something else!") 
+    } 
+}includes a service multiplexer named ServeMux that we can use for exactly
+this purpose.
+Here’s how we could use a ServeMux to multiplex two kinds of request—
+two different r outes —in our “hello, world” server:
+First, we use NewServeMux to create a new multiplexer that we call mux.
+Next, we call mux’s HandleFunc method to install a new route, /hello, and
+we map it to the hello handler. Similarly, we use HandleFunc again to map 
+/goodbye to the goodbye handler.
+We can keep doing this as many times as we want, mapping different URL
+patterns to their request-specific handler functions. Once we’ve finished
+setting up all the routes we want, we call ListenAndServe to start our server,
+and we pass it mux as the handler argument.
+When we run this program, mux will intercept each request and look at the
+URI part to see if it matches /hello. If so, it will invoke the hello handler,
+which sends the message “Hello, world”.
+func main() { 
+    mux := http.NewServeMux() 
+    mux.HandleFunc("/hello", hello) 
+    mux.HandleFunc("/goodbye", goodbye) 
+    http.ListenAndServe("localhost:3000", mux) 
+} 
+ 
+func hello(w http.ResponseWriter, r *http.Request) { 
+    fmt.Fprintln(w, "Hello, world") 
+} 
+ 
+func goodbye(w http.ResponseWriter, r *http.Request) { 
+    fmt.Fprintln(w, "Goodbye, world") 
+}On the other hand, if it matches /goodbye, that triggers the goodbye handler
+to print “Goodbye, world” instead. And if neither of those routes is
+matched, the mux will automatically respond with 404 page not found.
+Let’s try it out:
+curl localhost:3000/hello
+Hello, world
+curl localhost:3000/goodbye
+Goodbye, world
+curl localhost:3000/unknown
+404 page not found
+Adding a ServeMux to the bookstore server
+Let’s refactor our bookstore server to use a ServeMux for the existing /list
+endpoint, then:
+func ListenAndServe(addr string, catalog *Catalog) error { 
+    mux := http.NewServeMux() 
+    mux.HandleFunc("/list", 
+        func(w http.ResponseWriter, r *http.Request) { 
+        books := catalog.GetAllBooks() 
+        err := json.NewEncoder(w).Encode(books) 
+        if err != nil { 
+            panic(err) 
+        } 
+    }) 
+    return http.ListenAndServe(addr, mux) 
+}Here, instead of passing the closure directly to ListenAndServe as we did
+before, we first add it to the mux as the handler for the /list route. Then we
+pass the configured mux to ListenAndServe to start the server.
+Does this work?
+go test
+--- FAIL: TestServerListsAllBooks (0.00s) 
+    books_test.go:208: unexpected status 404
+No, but on reflection, I know why not. It’s because our test is requesting the
+wrong route:
+We need to add /list to the request URL so that it will match the pattern
+we defined in the mux:
+Now the test passes.
+Including parameters in the request
+There’s one more problem we need to solve to implement /find: we need to
+be able to include the book ID in the URL, and to extract it in the handler.
+Fortunately, ServeMux also lets us define arbitrary parameters as part of the
+route pattern, by enclosing the parameter name in curly braces:
+In other words, any request URI that starts with /hello/ followed by
+something  will invoke the hello handler. In turn, the handler can find out
+what the something was by calling r.PathValue with the name of that
+parameter:
+resp, err := http.Get("http://" + addr)
+resp, err := http.Get("http://" + addr + "/list")
+mux.HandleFunc("/hello/{name}", hello)Here’s the result:
+curl localhost:3000/hello/John
+Hello, John
+How friendly!
+Implementing find
+Okay, let’s see if we can plug this in to the bookstore server to create a new 
+/find endpoint that includes the book ID. First, let’s write a suitable test.
+A find endpoint with an ID parameter
+GOAL: Write a test for /find, similar to the existing test for /list, but
+including a book ID as part of the request URL.
+HINT: Be lazy and start by copying the test for the /list endpoint, because
+we’ll only need minimal changes to it. First, the URI we request should be
+something like /find/abc. Second, the response we decode should be a
+single Book struct, rather than a slice—and it should be the same book
+whose ID requested.
+SOLUTION: Here’s what I came up with:
+func hello(w http.ResponseWriter, r *http.Request) { 
+    name := r.PathValue("name") 
+    fmt.Fprintf(w, "Hello, %s\n", name) 
+}
+func TestFindFindsBookByID(t *testing.T) { 
+    t.Parallel()     addr := randomLocalAddr(t) 
+    catalog := getTestCatalog() 
+    catalog.Path = t.TempDir() + "/catalog" 
+    go func() { 
+        err := books.ListenAndServe(addr, catalog) 
+        if err != nil { 
+            panic(err) 
+        } 
+    }() 
+    resp, err := http.Get("http://" + addr + "/find/abc") 
+    if err != nil { 
+        t.Fatal(err) 
+    } 
+    defer resp.Body.Close() 
+    if resp.StatusCode != http.StatusOK { 
+        t.Fatalf("unexpected status %d", resp.StatusCode) 
+    } 
+    got := books.Book{} 
+    data, err := io.ReadAll(resp.Body) 
+    if err != nil { 
+        t.Fatal(err) 
+    } 
+    err = json.Unmarshal(data, &got) 
+    if err != nil { 
+        t.Fatalf("%v in %q", err, data) 
+    } 
+    want := books.Book{ 
+        Title:  "In the Company of Cheerful Ladies", 
+        Author: "Alexander McCall Smith", 
+        Copies: 1, 
+        ID:     "abc", 
+    } Let’s make sure this test fails as expected. I think we should get 404,
+because we didn’t create any /find handler yet, but we’ll see.
+--- FAIL: TestFindFindsBookByID (0.00s) 
+    books_test.go:236: unexpected status 404
+Fine. So, can you get this test passing?
+GOAL: Add support for the /find endpoint, so that it passes our test.
+HINT: Start by using mux.HandleFunc to configure a new route on the mux,
+with a suitable pattern to capture the book ID from the request URL. Then
+write the handler, using r.PathValue to extract the ID, GetBook to retrieve
+the specified book, and then encoding its data back to the client in the same
+way as we do with /list.
+Don’t worry for now about what happens if the book ID doesn’t exist. We’ll
+deal with that shortly. Your handler can just panic in this case; it doesn’t
+affect the test.
+SOLUTION: Here’s my version:
+    if want != got { 
+        t.Fatalf("want %#v, got %#v", want, got)
+    } 
+}
+mux.HandleFunc("/find/{id}", 
+    func(w http.ResponseWriter, r *http.Request) { 
+    ID := r.PathValue("id") 
+    book, ok := catalog.GetBook(ID) 
+    if !ok { 
+        panic(fmt.Sprintf("%q not found", ID)) 
+    } Just like the /list handler, this one needs to be a closure over the catalog
+variable, so that it can access the book information. Assuming that GetBook
+finds the requested book, we proceed to encoding it to JSON as usual.
+Let’s try it out with curl to see if we can find a book of interest. First, we’ll
+start the bookstore server with the test catalog:
+go run ./cmd/server testdata/catalog
+As before, we’ll run the curl command in another terminal:
+curl localhost:3000/find/abc
+{"Title":"In the Company of Cheerful Ladies","Author":"Alexander 
+McCall Smith","Copies":1,"ID":"abc"}
+Adding a version number to the URL
+Great. Before we go ahead and write the new version of the find program
+to talk to our API server, let’s make one important change. We saw in the
+previous version that HTTP requests and responses always include the
+protocol version (for example, HTTP/1.1). That’s because otherwise we
+can’t really ever change the protocol.
+Versioning our API makes it possible to extend and improve it later, as our
+requirements evolve. Let’s call this version V1, and we’ll include it in the
+request URL, like this:
+/v1/find/abc
+We’ll make that change first of all in the tests:
+    err := json.NewEncoder(w).Encode(book) 
+    if err != nil { 
+        panic(err) 
+    } 
+})Until we make the corresponding change on the server side, these two tests
+should now fail with 404:
+--- FAIL: TestServerListsAllBooks (0.00s) 
+    books_test.go:208: unexpected status 404
+--- FAIL: TestFindFindsBookByID (0.00s) 
+    books_test.go:236: unexpected status 404
+Now we’ll fix the server:
+Now that the tests are passing again, let’s also fix the list program to
+include the version and endpoint in its request URL:
+Updating the find program to HTTP
+We’re ready to turn our attention to updating the find program to use our
+new HTTP server. Here’s what it looked like before:
+resp, err := http.Get("http://" + addr + "/v1/list") 
+... 
+resp, err := http.Get("http://" + addr + "/v1/find/abc")
+mux.HandleFunc("/v1/list", ...) 
+mux.HandleFunc("/v1/find/{id}", ...)
+resp, err := http.Get("http://localhost:3000/v1/list")
+func main() { 
+    if len(os.Args) != 2 { 
+        fmt.Println("Usage: find <BOOK ID>") 
+        return 
+    } 
+    catalog, err := books.OpenCatalog("testdata/catalog") 
+    if err != nil { (Listing books/18)
+Since you did such a great job on converting the list program, why don’t
+you see what you can do here, too?
+GOAL: Update the find program to use the new bookstore API.
+HINT: Just like the test, much of the code will be the same as for the list
+program. We’ll make the HTTP request, check the response, and decode it
+in the same way. The only important difference is that we’ll need to include
+the book ID in the request URL.
+Again, don’t worry for now about what happens if the book isn’t found.
+We’ll solve that problem later. Laziness can be a superpower.
+SOLUTION: Something like this should do the job:
+        fmt.Printf("opening catalog: %v\n", err)
+        return 
+    } 
+    ID := os.Args[1] 
+    book, ok := catalog.GetBook(ID) 
+    if !ok { 
+        fmt.Println("Sorry, I couldn't find that book in the 
+catalog.") 
+        return 
+    } 
+    fmt.Println(book) 
+}
+func main() { 
+    if len(os.Args) != 2 { 
+        fmt.Println("Usage: find <BOOK ID>") (Listing books/19)
+Just like the old version, it gets the book ID from os.Args, and prints the
+book data using fmt.Println. But instead of using the catalog directly, it
+makes a find request to the API and decodes the response to get the book.
+        return 
+    } 
+    ID := os.Args[1] 
+    resp, err := http.Get("http://localhost:3000/v1/find/" + ID) 
+    if err != nil { 
+        fmt.Println(err) 
+        return 
+    } 
+    defer resp.Body.Close() 
+    if resp.StatusCode != http.StatusOK { 
+        fmt.Printf("unexpected status %d", resp.StatusCode) 
+        return 
+    } 
+    data, err := io.ReadAll(resp.Body) 
+    if err != nil { 
+        fmt.Println(err) 
+        return 
+    } 
+    book := books.Book{} 
+    err = json.Unmarshal(data, &book) 
+    if err != nil { 
+        fmt.Printf("%v in %q", err, data) 
+        return 
+    } 
+    fmt.Println(book) 
+}This works nicely:
+go run ./cmd/find xyz
+White Heat by Dominic Sandbrook (copies: 2)
+But, since at some point users are bound to search for a book that doesn’t
+exist in the catalog, let’s try that too:
+go run ./cmd/find bogus
+Get "http://localhost:3000/v1/find/bogus": EOF
+Oh dear. That’s not particularly helpful. “EOF” stands for “End Of File”,
+meaning that the server closed the connection before the client expected it
+to. That makes sense, since our handler just panics if the book ID isn’t
+found in the catalog.
+HTTP handler panics are recovered
+By the way, since panic usually terminates the program, you might wonder
+why the server doesn’t stop running when this happens. If we look at the
+terminal where the server is running, we see this:
+2025/06/25 13:20:38 http: panic serving [::1]:56195: ID "bogus" not 
+found 
+...
+It does at least report this error, which is helpful. But why didn’t the
+program exit?
+Well, panics can happen for all sorts of reasons, and we wouldn’t
+necessarily want one  panicking request to shut down the server for all other
+users. Indeed, that would be a potential denial-of-service vulnerability. If
+someone figured out how to craft a request that panicked the server (as we
+just have), they could shut it down any time they wanted to.
+To prevent this, Go’s HTTP server r ecovers  panics in handlers. We needn’t
+worry about exactly how this works, since we don’t usually need to do it inour programs. The upshot is that panics are reported, but the server keeps
+on running.
+Returning “not found” for unknown IDs
+That’s fine, but the user experience on the client side could be better.
+Ideally, we’d like to be able to set an appropriate HTTP response status in
+this case.
+404 not found would be logical, since the requested resource doesn’t in fact
+exist. And to distinguish it from the generic 404 response you get when
+there’s no such endpoint , we’d like to send an informative error message
+too, like “ID xyz not found”.
+That sounds doable. Let’s start with a test:
+func TestFindReturnsNotFoundWhenBookNotFound(t *testing.T) { 
+    t.Parallel() 
+    addr := randomLocalAddr(t) 
+    catalog := getTestCatalog() 
+    catalog.Path = t.TempDir() + "/catalog" 
+    go func() { 
+        err := books.ListenAndServe(addr, catalog) 
+        if err != nil { 
+            panic(err) 
+        } 
+    }() 
+    resp, err := http.Get("http://" + addr + "/v1/find/bogus") 
+    if err != nil { 
+        t.Fatal(err) 
+    } 
+    defer resp.Body.Close() 
+    if resp.StatusCode != http.StatusNotFound { 
+        t.Fatalf("unexpected status %d", resp.StatusCode) (Listing books/19)
+For this test to pass, the server has to return the correct HTTP status in its
+response. At the moment, though, it’s not even failing , because the test
+server panics before it can send a response at all:
+2025/06/29 12:39:21 http: panic serving [::1]:52707: ID "bogus" not 
+found
+Let’s replace that panic in the handler with a simple return for now and see
+what happens:
+Now the test reports:
+unexpected status 200
+Using http.Error to set the response status
+We want the handler to be able to set the appropriate status code and 
+include an explanatory message. Again, the standard library has our back
+here, because the http.Error function conveniently does exactly this:
+    } 
+}
+book, ok := catalog.GetBook(ID) 
+if !ok { 
+    return 
+}
+book, ok := catalog.GetBook(ID) 
+if !ok { 
+    http.Error(w, fmt.Sprintf("%q not found", ID), 
+http.StatusNotFound) (Listing books/19)
+Now the test passes, so let’s see if the find program’s response is any more
+helpful:
+go run ./cmd/find bogus
+unexpected status 404
+Not really. That’s because its response status handling is still pretty simple-
+minded:
+(Listing books/19)
+We could add a specific check for StatusNotFound, and so on, but it’s
+getting pretty tedious writing so many copies of the request / response code.
+The lazy programmer’s rule of thumb is that if they’ve written roughly the
+same code three or four times, it’s probably worth turning it into an
+abstraction. Let’s tackle that in the next chapter.
+Here’s what we know so far
+You’ve learned a useful trick: writing a function literal to capture some
+variable in a closur e . This comes in very handy when setting up functions to
+be called later: for example, as handlers for an HTTP server.
+You also now know how to configure different handlers for different
+request patterns, using a ServeMux, and how to write patterns that extract a
+    return 
+}
+if resp.StatusCode != http.StatusOK { 
+    fmt.Printf("unexpected status %d", resp.StatusCode) 
+    return 
+}request parameter (such as the book ID) and make it available to the
+handler, using r.PathValue.
+We talked about the special behaviour of Go’s HTTP server when handler
+functions panic: rather than taking down the whole server, the panic is
+r ecover ed  and logged. And you learned how to use the http.Error function
+to set the response status code, along with a suitable error message.

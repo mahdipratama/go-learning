@@ -1,0 +1,1254 @@
+13. The end of the beginning
+A bookstore client
+Just as we have a server abstraction (defined by ListenAndServe), it seems
+logical that we could make use of a client abstraction too. The Catalog
+abstraction that we started with was nice, in that we could write fairly
+simple code like this:
+In other words, all you need to know to open and use a catalog is the path to
+its disk file. Could we create a catalog client that works in a similar way?
+The Client abstraction
+In other words, what we’d like to write in find and other programs is
+something like this:
+catalog, err := books.OpenCatalog("testdata/catalog") 
+... 
+book, ok := catalog.GetBook(ID)(Listing books/20)
+None of this annoying paperwork about checking resp.StatusCode, reading
+bytes from the body, decoding JSON, and so forth. All you need to know to
+create and use the client is the catalog server’s address.
+As with all abstractions, the job of the client is to hide irrelevant details
+from the code that uses it. When we’re writing a find program, we don’t
+want to be concerned with how to construct the request URL, how to
+interpret the response status, how to decode the body, and so on. We’d
+prefer to work with something that acts just like a catalog: we can call 
+GetBook on it and get the book we want, or an error explaining why not.
+Having a client like this would make it easy to write programs like find, 
+list, and so on, as well as dramatically simplifying our tests. It seems
+worth the effort, so let’s start by defining NewClient and its associated 
+Client type:
+client := books.NewClient("localhost:3000") 
+book, err := client.GetBook(ID) 
+if err != nil { 
+    fmt.Println(err) 
+    return 
+}
+type Client struct { 
+    addr string 
+} 
+ 
+func NewClient(addr string) *Client { 
+    return &Client{ 
+        addr: addr, 
+    } 
+}(Listing books/20)
+The tests want to call a GetBook method on the client, so for now we’ll write
+a dummy implementation that does nothing:
+A getTestClient helper
+Now we can start refactoring our tests to use the new abstraction. For
+example, how would the test for GetBook change now that we can use a 
+Client to abstract away the HTTP paperwork?
+func (client *Client) GetBook(ID string) (Book, error) { 
+    return Book{}, nil 
+}
+func TestGetBook_OnClientFindsBookByID(t *testing.T) { 
+    t.Parallel() 
+    addr := randomLocalAddr(t) 
+    catalog := getTestCatalog() 
+    catalog.Path = t.TempDir() + "/catalog" 
+    go func() { 
+        err := books.ListenAndServe(addr, catalog) 
+        if err != nil { 
+            panic(err) 
+        } 
+    }() 
+    client := books.NewClient(addr) 
+    got, err := client.GetBook("abc") 
+    if err != nil { 
+        t.Fatal(err) 
+    } 
+    want := books.Book{ 
+        Title:  "In the Company of Cheerful Ladies", This is already a lot shorter (and thus clearer) than what we had before.
+Could we clean it up even more?
+Well, another thing we need to do in multiple tests is get a random server
+address, start a catalog server on that address, and create a client associated
+with that server. It seems like this could profitably move into a helper
+function, so that we could write, for example:
+Over to you again to make this happen.
+GOAL: Implement getTestClient.
+HINT: We already have code to start the server in a goroutine, and to create
+the client and assign it the server’s address. All you have to do now is move
+that into a getTestClient helper function, and have it return the client.
+SOLUTION: Here’s my version:
+        Author: "Alexander McCall Smith", 
+        Copies: 1, 
+        ID:     "abc", 
+    } 
+    if want != got { 
+        t.Fatalf("want %#v, got %#v", want, got)
+    } 
+}
+client := getTestClient(t) 
+got, err := client.GetBook("abc") 
+...(Listing books/20)
+While we’re refactoring, abstracting, and simplifying, it strikes me that
+we’re mentioning “In the Company of Cheerful Ladies” an awful lot. It’s a
+fine book, to be sure, but do we need to repeat this entire struct in every
+test? Let’s assign both our test books to variables in the test package:
+func getTestClient(t *testing.T) *books.Client { 
+    t.Helper() 
+    addr := randomLocalAddr(t) 
+    catalog := getTestCatalog() 
+    catalog.Path = t.TempDir() + "/catalog" 
+    go func() { 
+        err := books.ListenAndServe(addr, catalog) 
+        if err != nil { 
+            panic(err) 
+        } 
+    }() 
+    return books.NewClient(addr) 
+}
+var ( 
+    ABC = books.Book{ 
+        Title:  "In the Company of Cheerful Ladies", 
+        Author: "Alexander McCall Smith", 
+        Copies: 1, 
+        ID:     "abc", 
+    } 
+ 
+    XYZ = books.Book{ 
+        Title:  "White Heat", 
+        Author: "Dominic Sandbrook", (Listing books/20)
+Now we can refer to these books in the tests using much shorter names:
+(Listing books/20)
+Here’s our complete, refactored test:
+(Listing books/20)
+Now that all the paperwork is hidden away, the test is short, clear, and to the
+point. It’s easier to see what’s actually being tested.
+        Copies: 2, 
+        ID:     "xyz", 
+    } 
+)
+if got != ABC { 
+    t.Fatalf("want %#v, got %#v", ABC, got) 
+}
+func TestGetBook_OnClientFindsBookByID(t *testing.T) { 
+    t.Parallel() 
+    client := getTestClient(t) 
+    got, err := client.GetBook("abc") 
+    if err != nil { 
+        t.Fatal(err) 
+    } 
+    if got != ABC { 
+        t.Fatalf("want %#v, got %#v", ABC, got) 
+    } 
+}Implementing GetBook
+Since GetBook currently does nothing at all, we feel this test should fail, but
+let’s find out:
+go test
+--- FAIL: TestGetBook_OnClientFindsBookByID (0.00s) 
+    books_test.go:219: want books.Book{Title:"In the Company of 
+    Cheerful Ladies", Author:"Alexander McCall Smith", Copies:1, 
+    ID:"abc"}, got books.Book{Title:"", Author:"", Copies:0, ID:""}
+Great. Now let’s make it work.
+GOAL: Implement the GetBook method on the client so that this test passes.
+HINT: Like any good abstraction, GetBook does a lot of work behind the
+scenes. It constructs the right URL, makes the request to the server, checks
+the response status, and decodes the body data, handling errors at each
+stage. We’ve already written all this code, so your job is to move it into the 
+GetBook method on *Client, and tidy up the rough edges.
+SOLUTION: Here’s a quick sketch, though I’m sure we can improve on
+this further:
+func (client *Client) GetBook(ID string) (Book, error) { 
+    resp, err := http.Get("http://" + client.addr + "/v1/find/" + 
+ID) 
+    if err != nil { 
+        return Book{}, err 
+    } 
+    defer resp.Body.Close() 
+    if resp.StatusCode != http.StatusOK { 
+        return Book{}, fmt.Errorf("unexpected status %d", All we’ve done here is move the request / response paperwork from the test
+into the GetBook method itself, substituting fmt.Errorf for t.Errorf where
+necessary.
+Now our “happy path” test for GetBook is passing, so let’s refactor the “sad
+path” test to use the Client abstraction too:
+(Listing books/20)
+And this passes (hurray!)
+resp.StatusCode) 
+    } 
+    book := Book{} 
+    data, err := io.ReadAll(resp.Body) 
+    if err != nil { 
+        return Book{}, err 
+    } 
+    err = json.Unmarshal(data, &book) 
+    if err != nil { 
+        return Book{}, fmt.Errorf("%v in %q", err, data) 
+    } 
+    return book, nil 
+}
+func TestFindReturnsErrorWhenBookNotFound(t *testing.T) { 
+    t.Parallel() 
+    client := getTestClient(t) 
+    _, err := client.GetBook("bogus") 
+    if err == nil { 
+        t.Error("want error when book not found, got nil") 
+    } 
+}Updating the find program
+Now we can refactor the find program in the same way:
+(Listing books/20)
+Even though we’ve improved the code for the find program, the user
+experience still leaves a little to be desired when the book ID is not found:
+unexpected status 404
+Let’s add a special case for this status code in GetBook, then:
+This doesn’t affect any test, and nor should it, because we’re not changing
+the logic of the program, only the output messages that users see. And we
+func main() { 
+    if len(os.Args) != 2 { 
+        fmt.Println("Usage: find <BOOK ID>") 
+        return 
+    } 
+    ID := os.Args[1] 
+    client := books.NewClient("localhost:3000")
+    book, err := client.GetBook(ID) 
+    if err != nil { 
+        fmt.Println(err) 
+        return 
+    } 
+    fmt.Println(book) 
+}
+if resp.StatusCode == http.StatusNotFound { 
+    return Book{}, fmt.Errorf("%q not found", ID)
+}can verify that by being a user for a moment:
+go run ./cmd/find bogus
+ID "bogus" not found
+Adding GetAllBooks
+Good. Let’s make the same refactoring to the list program, along with its
+tests.
+GOAL: Update the list program to use the new client abstraction.
+HINT: Just as we added a GetBook method to the Client to handle this,
+we’ll now need a GetAllBooks method, too. See what you can come up
+with.
+SOLUTION: We’ll start by refactoring the test:
+(Listing books/20)
+Here’s an implementation of GetAllBooks that passes the test:
+func TestGetAllBooks_OnClientListsAllBooks(t *testing.T) { 
+    t.Parallel() 
+    client := getTestClient(t) 
+    bookList, err := client.GetAllBooks() 
+    if err != nil { 
+        t.Fatal(err) 
+    } 
+    assertTestBooks(t, bookList) 
+}And now that GetAllBooks is working, we can refactor list to use it:
+func (client *Client) GetAllBooks() ([]Book, error) { 
+    resp, err := http.Get("http://" + client.addr + "/v1/list") 
+    if err != nil { 
+        return nil, err 
+    } 
+    defer resp.Body.Close() 
+    if resp.StatusCode != http.StatusOK { 
+        return nil, fmt.Errorf("unexpected status %d", 
+resp.StatusCode) 
+    } 
+    bookList := []Book{} 
+    data, err := io.ReadAll(resp.Body) 
+    if err != nil { 
+        return nil, err 
+    } 
+    err = json.Unmarshal(data, &bookList) 
+    if err != nil { 
+        return nil, fmt.Errorf("%v in %q", err, data) 
+    } 
+    return bookList, nil 
+}
+func main() { 
+    client := books.NewClient("localhost:3000")
+    bookList, err := client.GetAllBooks() 
+    if err != nil { 
+        fmt.Println(err) 
+        return 
+    } (Listing books/20)
+Abstracting common code
+The messy business of translating back and forth from the “bookstore”
+protocol to its HTTP implementation has been tidied away out of sight of
+our find and list programs, inside GetBook and GetAllBooks.
+But there’s still a lot of duplication between those two methods, and if we
+were to add more methods, we’d have to duplicate it even more. That
+doesn’t seem quite right. After all, both functions make an API request, and
+interpret the response, in exactly the same way. The only difference is in the
+specific requests that they make.
+Could we create a function to abstract out this common code for making
+API requests, then, and use it to simplify these two methods? Let’s give it a
+try.
+First, if we step back from the two methods and look at them with squinty
+eyes, so that the details are blurred, we can see that they both look roughly
+like the following:
+    for _, book := range bookList { 
+        fmt.Println(book) 
+    } 
+}
+func (client *Client) GetXXX() (XXX, error) { 
+    resp, err := http.Get("http://" + client.addr + "/v1/" + XXX) 
+    if err != nil { 
+        return nil, err 
+    } 
+    defer resp.Body.Close() 
+    if resp.StatusCode == http.StatusNotFound { 
+        return nil, errors.New("not found") I’ve used “XXX” as a placeholder for the few things that are different, but
+there’s much more code that is really is common to both methods (or any
+client method, presumably). We always construct some URL based on the
+server address, we always return an error if the response status is not OK,
+we always read all the data from the body, and we always unmarshal it into
+some suitable result variable, which we return.
+It seems like all this could move into a common method used by both 
+GetBook and GetAllBooks to make their API requests: let’s name it,
+straightforwardly, MakeAPIRequest. What would GetBook look like, for
+example, if it used this helpful magic method?
+    } 
+    if resp.StatusCode != http.StatusOK { 
+        return nil, fmt.Errorf("unexpected status %d", 
+resp.StatusCode) 
+    } 
+    XXX := XXX 
+    data, err := io.ReadAll(resp.Body) 
+    if err != nil { 
+        return nil, err 
+    } 
+    err = json.Unmarshal(data, &XXX) 
+    if err != nil { 
+        return nil, fmt.Errorf("%v in %q", err, data) 
+    } 
+    return XXX, nil 
+}
+func (client *Client) GetBook(ID string) (Book, error) { 
+    book := Book{} 
+    err := client.MakeAPIRequest("find/"+ID, &book) 
+    if err != nil { (Listing books/20)
+Seems reasonable, doesn’t it? What about GetAllBooks?
+(Listing books/20)
+This looks much nicer, too. We probably wouldn’t mind writing a bunch
+more of these methods along similar lines, knowing that all the messy
+HTTP paperwork is tucked neatly away inside MakeAPIRequest.
+A polymorphic method
+How can we write MakeAPIRequest? It needs to take two parameters: the
+part of the URI that identifies the specific endpoint we want, and a pointer
+to the result variable where the data should be written.
+But what types are these parameters? The URI is a string, so that’s no
+problem, but what about the result pointer? If we were to declare it as 
+*Book, for example, that only works for GetBook. For GetAllBooks, which
+uses a slice, it would have to be *[]Book.
+        return Book{}, err 
+    } 
+    return book, nil 
+}
+func (client *Client) GetAllBooks() ([]Book, error) { 
+    bookList := []Book{} 
+    err := client.MakeAPIRequest("list", &bookList) 
+    if err != nil { 
+        return nil, err 
+    } 
+    return bookList, nil 
+}What type should we declare for a parameter that could be a pointer to
+either a single value or a slice? It’s not obvious, since these are two distinct
+types. It would seem that we can’t cover both with a single parameter.
+When you have an API puzzle like this, it’s often worth asking if there’s
+something in the standard library that works a similar way. Maybe there is.
+For instance, we already know that json.Unmarshal can decode JSON data
+into any type of variable we pass it.
+Here’s how we call that function in the original version of GetBook, passing
+it a pointer to a Book:
+Yet when we call it in GetAllBooks, we give it a pointer to a slice instead:
+How does that work? Let’s take a peek at the signature of json.Unmarshal
+to see what complicated magic lurks within:
+It doesn’t look too outlandish at first sight: the data to unmarshal is a slice
+of bytes, but what’s this v any parameter? What does v represent, and what
+type is any?
+Well, we’ve just seen that v will be a pointer to the variable where the
+decoded result should be stored. How does json.Unmarshal get around the
+problem that it doesn’t know what type of result it’s taking a pointer to?
+The any interface
+You know that Go’s standard library often uses abstractions such as 
+io.Reader, representing any type of value that we can read bytes from.
+err = json.Unmarshal(data, &book)
+err = json.Unmarshal(data, &bookList)
+func json.Unmarshal(data []byte, v any) errorThese special polymorphic (“many-shaped”) types are called “interfaces”,
+because they’re defined in terms of what we can do with the thing. For
+example, the io.Reader interface stands for any type that we can read from,
+and we can do that if the type has a Read method.
+That’s how we create an interface type: by listing a bunch of methods that a
+type must have in order to implement (that is, satisfy) the interface. Let’s
+look at io.Reader’s definition, then, just for fun:
+Very simple! There’s only one method required, named Read, and any type
+that has it is an io.Reader. As we’ve seen, lots of things have a Read
+method: files, HTTP response bodies, and so on. They can all be used
+where a function expects an io.Reader.
+What about the any interface, then? What methods does a type need to have
+in order to be an any? See if you can work it out from the definition:
+It’s an empty list. Any type at all implements this interface. Note that the
+interface is not saying the type must have precisely no methods: instead, it
+just says that no particular methods are required to be an any. Thus, every
+type satisfies this requirement.
+Because of this, any is the least restrictive possible interface, and thus (in
+some ways) the most useful.
+As I mentioned, you can learn much more about interfaces in Know Go if
+you’re interested, but all we need to know for this program is how to
+declare a parameter to MakeAPIRequest that can be any type. Now we can do
+exactly that:
+type Reader interface { 
+    Read(p []byte) (n int, err error) 
+}
+type any = interface{}By the way, since the result argument to json.Unmarshal only works if it’s a
+pointer, you might be inclined to wonder what would happen if it weren’t.
+For example, if we wrote something like this:
+This is legal Go code since, as we just learned, any type satisfies any. All
+the same it must be a mistake. json.Unmarshal can’t actually change the
+contents of the variable unless we give it a pointer.
+Luckily, json.Unmarshal can detect this problem at run time, and will return
+a suitable error:
+json: Unmarshal(non-pointer books.Book)
+Now that we’ve added the powerful any interface to our toolbox, we can go
+ahead and write a version of MakeAPIRequest that works with it:
+func (client *Client) MakeAPIRequest(URI string, result any) 
+error {
+book := Book{} 
+err := json.Unmarshal(data, book) // oops: should be `&book`
+func (client *Client) MakeAPIRequest(URI string, result any) 
+error { 
+    resp, err := http.Get("http://" + client.addr + "/v1/" + URI) 
+    if err != nil { 
+        return err 
+    } 
+    defer resp.Body.Close() 
+    if resp.StatusCode == http.StatusNotFound { 
+        return errors.New("not found") 
+    } 
+    if resp.StatusCode != http.StatusOK { 
+        return fmt.Errorf("unexpected status %d", (Listing books/20)
+Notice, by the way, that we pass the result parameter directly to 
+json.Unmarshal:
+We don’t need to use the & operator to create a pointer to it, for the simple
+reason that it’s already a pointer when it’s passed to MakeAPIRequest.
+Managing stock levels
+Our newly refactored API server can support the list and find programs
+now, so what about copies? This is a little more interesting, since it requires
+writing to the catalog.
+When the catalog data was in memory and we had sole control of it, we
+managed stock level information by calling GetCopies and SetCopies
+methods on the catalog object. But the catalog database is now a distributed
+system: that is, we have multiple programs talking to each other instead of
+just one program.
+resp.StatusCode) 
+    } 
+    data, err := io.ReadAll(resp.Body) 
+    if err != nil { 
+        return err 
+    } 
+    err = json.Unmarshal(data, result) 
+    if err != nil { 
+        return fmt.Errorf("%v in %q", err, data) 
+    } 
+    return nil 
+}
+err = json.Unmarshal(data, result)What implications does that have for things like copies, then?
+TOCTOU for two
+You might be tempted to add API endpoints that straightforwardly replicate
+what we had on the catalog: something like getcopies/ID and 
+/setcopies/ID/N to set N copies.
+But is this really good enough? For example, suppose that Amina is adding
+new stock to the system, and she has two copies of Caroline Graham’s The
+Killings at Badger’s Drift to process. What is the correct new stock level of
+this book? It depends on how many copies are already in stock.
+Amina first has to find that out, using some hypothetical getcopies
+program:
+getcopies kbd
+8 copies in stock
+So, counting the two new copies, that’s 10 in total. Now Amina uses a
+hypothetical setcopies program to update this:
+setcopies kbd 10
+Can you see the problem? What Amina doesn’t know is that, concurrently
+with this, Bhavana is selling a copy of the same book at the next till over.
+Bhavana checks the current stock level:
+getcopies kbd
+8 copies in stock
+She hands over the book to the delighted customer, and runs setcopies to
+reflect the fact that the stock level just dropped by one:
+setcopies kbd 7Now, when Amina and Bhavana have both finished their respective
+transactions, what is the true stock level? It started at 8, we added two and
+subtracted one, so I hope we agree it’s now 9. But the system doesn’t agree.
+The system’s view of the stock level depends on whose transaction
+completed last.
+If Amina’s finished last, then the catalog will show the level she set: 10. On
+the other hand, if Bhavana’s overwrote Amina’s, then the catalog will show
+7. Both answers are wrong, and the saddest thing is that we don’t even
+know which wrong answer we’ll get until it happens.
+I’m sure that by now you recognise the problem as a data race. This specific
+kind of race is called a TOCTOU (Time-Of-Check-to-Time-Of-Use) error.
+The information Amina and Bhavana have about the stock level is only as
+good as the last time they checked it, and by the time they use that
+information to update the catalog, it could well be out of date.
+It’s as though you check your bank account one day, and you find that the
+balance is exactly a dollar. Then, a few weeks later, you withdraw exactly a
+dollar. Does this result in you going overdrawn? Who knows? It’s entirely
+possible (sad to say). It depends what else happened between the “time of
+check” and the “time of use”.
+Stale and poisoned locks
+How do we fix this? We’ve solved previous data races by using a mutex
+lock on the catalog. Would that work here?
+Well, for Amina’s change to be atomic (“not split”) she would have to first
+obtain the lock with the getcopies query, and then hold it until it’s released
+by the call to setcopies. The state of that lock prevents Bhavana, or anyone
+else, reading or modifying the catalog for any book, until Amina completes
+her whole transaction.
+That solves the TOCTOU problem, but it potentially creates a worse one:
+the lock becoming stale. Amina might get distracted, or finish her shift, or
+her computer might crash; any number of things could prevent her fromrunning setcopies to release the lock. Once the lock goes stale, anyone who
+tries to obtain it becomes blocked.
+This can quickly lead to a deadlock, in which everyone is waiting for locks,
+and because no one can proceed, anyone holding a lock can’t release it. The
+whole system is logjammed. In Go, the runtime detects this situation and
+terminates the program, because it’s logically impossible for it to continue.
+Critical sections must be as fast as possible, and ideally never panic or be
+interrupted. If a goroutine panics while holding a lock, the mutex is said to
+be poisoned: any other goroutine that tries to obtain it will simply sleep
+forever, like Snow White.
+While locks can be very useful, then, they must only be held for short
+periods, and “short” here means in computer time, not human time. Even if
+Amina holds the lock for only a minute or two, that’s probably already long
+enough to disrupt bookstore operations.
+Atomic changes
+A better solution here is to re-think what Amina and Bhavana are really
+doing. Yes, they’re both reading and then writing copies information for a
+book, but it’s in service of two different goals. Amina wants to add two
+copies to the store’s current stock, whatever it happens to be at the time.
+Bhavana wants to subtract one copy from the store’s current stock,
+whatever it happens to be at the time.
+When you phrase the problem that way, it opens up a new idea: what if our
+programs (and corresponding endpoints) were not getcopies and 
+setcopies, but instead, let’s say, addcopies and subcopies?
+Now, when Amina runs addcopies kbd 2, the API server need only hold the
+lock for as long as it takes to add 2 to the current stock level, whatever it is.
+And when Bhavana runs subcopies kbd 1, she only blocks bookstore
+operations for as long as it takes to subtract 1—provided, of course, that
+there is at least one copy in stock.This sounds like a more workable plan. We’ll still need a getcopies
+program, for checking stock levels, but we’ll replace setcopies with two
+programs, addcopies and subcopies. We’ll say that adding copies always
+succeeds, but that subtracting copies can fail (leaving the catalog
+unchanged) if the result would be less than zero stock of a book.
+Implementing getcopies
+Let’s start with getcopies, then.
+GOAL: Implement the getcopies program, along with a suitable API
+endpoint and client method, including tests.
+HINT: As always, it’s a good idea to start with a test. Actually, two tests,
+since client.GetCopies will have two behaviours. If the book exists, it will
+return the correct number of copies, but if it doesn’t, it will return an error.
+Start with tests for these behaviours that fail because the GetCopies method
+does nothing.
+Then, implement GetCopies, along the same lines as the existing GetBook
+method. The sad-path test should now pass, because the API server doesn’t
+yet have a /getcopies endpoint, so it returns 404.
+Now implement the /getcopies endpoint so that both tests pass. Finally,
+write the getcopies program, based on find.
+SOLUTION: Here are the tests:
+func TestGetCopies_OnClientReturnsCopiesForBook(t *testing.T) { 
+    t.Parallel() 
+    client := getTestClient(t) 
+    copies, err := client.GetCopies("abc") 
+    if err != nil { 
+        t.Fatal(err) (Listing books/20)
+We’ll start with a dummy version of GetCopies that should fail both tests:
+Here we go:
+--- FAIL: TestGetCopies_OnClientReturnsCopiesForBook (0.00s) 
+    books_test.go:219: want 1 copy, got 0 
+--- FAIL: TestGetCopies_OnClientErrorsWhenBookNotFound (0.00s) 
+    books_test.go:228: want error when book not found, got nil
+Great, that verifies the tests, so now we can proceed to write a more
+believable version of GetCopies:
+    } 
+    if copies != 1 { 
+        t.Fatalf("want 1 copy, got %d", copies)
+    } 
+} 
+ 
+func TestGetCopies_OnClientErrorsWhenBookNotFound(t *testing.T) { 
+    t.Parallel() 
+    client := getTestClient(t) 
+    _, err := client.GetCopies("bogus") 
+    if err == nil { 
+        t.Error("want error when book not found, got nil") 
+    } 
+}
+func (client *Client) GetCopies(ID string) (int, error) { 
+    return 0, nil 
+}(Listing books/20)
+Only the happy-path test should now fail, with a “not found” error (because
+the endpoint doesn’t exist):
+--- FAIL: TestGetCopies_OnClientReturnsCopiesForBook (0.00s) 
+    books_test.go:216: not found
+This is encouraging, so here’s a handler that should do the job:
+func (client *Client) GetCopies(ID string) (int, error) { 
+    copies := 0 
+    err := client.MakeAPIRequest("getcopies/"+ID, &copies) 
+    if err != nil { 
+        return 0, err 
+    } 
+    return copies, nil 
+}
+mux.HandleFunc("/v1/getcopies/{id}", 
+    func(w http.ResponseWriter, r *http.Request) { 
+    ID := r.PathValue("id") 
+    copies, err := catalog.GetCopies(ID) 
+    if err != nil { 
+        http.Error(w, fmt.Sprintf("%q not found", ID), 
+            http.StatusNotFound) 
+        return 
+    } 
+    err = json.NewEncoder(w).Encode(copies) 
+    if err != nil { 
+        panic(err) 
+    } 
+})Everything is now passing, so we’re ready to write the client program:
+(Listing books/20)
+We’ll spin up a copy of the server to try it out:
+go run ./cmd/server testdata/catalog
+And run the program:
+go run ./cmd/getcopies abc
+package main
+ 
+import ( 
+    "books" 
+    "fmt" 
+    "os" 
+) 
+ 
+func main() { 
+    if len(os.Args) != 2 { 
+        fmt.Println("Usage: getcopies <BOOK ID>") 
+        return 
+    } 
+    ID := os.Args[1] 
+    client := books.NewClient("localhost:3000")
+    copies, err := client.GetCopies(ID) 
+    if err != nil { 
+        fmt.Println(err) 
+        return 
+    } 
+    fmt.Printf("%d copies in stock", copies) 
+}1 copies in stock
+Nice work!
+Adding copies to the catalog
+Let’s go ahead and put the finishing touches to the bookstore server, then.
+First, we’ll take care of addcopies.
+GOAL: Implement the addcopies program, along with a suitable API
+endpoint and client method, including tests.
+HINT: We’ll follow exactly the same procedure as for getcopies: write the
+test, verify the test, pass the test. Take it one step at a time and you’ll be
+fine.
+SOLUTION: Here are my tests:
+func TestAddCopies_CorrectlyUpdatesStockLevel(t *testing.T) { 
+    t.Parallel() 
+    client := getTestClient(t) 
+    copies, err := client.GetCopies("abc") 
+    if err != nil { 
+        t.Fatal(err) 
+    } 
+    if copies != 1 { 
+        t.Fatalf("want 1 copy before change, got %d", copies) 
+    } 
+    stock, err := client.AddCopies("abc", 2) 
+    if err != nil { 
+        t.Fatal(err) 
+    } 
+    if stock != 3 { (Listing books/20)
+It’s not strictly necessary to have AddCopies return the new stock level once
+it’s successfully updated, but it’s nice, isn’t it? Here’s the AddCopies
+method:
+(Listing books/20)
+        t.Fatalf("want 3 copies after change, got %d", copies) 
+    } 
+} 
+ 
+func TestAddCopies_OnClientErrorsWhenBookNotFound(t *testing.T) { 
+    t.Parallel() 
+    client := getTestClient(t) 
+    _, err := client.AddCopies("bogus", 1) 
+    if err == nil { 
+        t.Error("want error when book not found, got nil") 
+    } 
+}
+func (client *Client) AddCopies(ID string, copies int) (int, 
+error) { 
+    URI := fmt.Sprintf("/addcopies/%s/%d", ID, copies) 
+    stock := 0 
+    err := client.MakeAPIRequest(URI, &stock) 
+    if err != nil { 
+        return 0, err 
+    } 
+    return stock, nil 
+}Our client abstraction, along with MakeAPIRequest, is working so well that
+it’s almost no effort to implement these extra methods. Here’s the
+corresponding handler:
+(Listing books/20)
+There’s a slight wrinkle here in that the copies parameter comes to us as a
+string, but we want an integer. Fortunately, that’s the same problem we
+already solved in the original copies program, using strconv.Atoi to do the
+conversion.
+mux.HandleFunc("/v1/addcopies/{id}/{copies}", 
+    func(w http.ResponseWriter, r *http.Request) { 
+    ID := r.PathValue("id") 
+    copies, err := strconv.Atoi(r.PathValue("copies")) 
+    if err != nil { 
+        http.Error(w, err.Error(), http.StatusBadRequest) 
+        return 
+    } 
+    stock, err := catalog.AddCopies(ID, copies) 
+    if err != nil { 
+        http.Error(w, err.Error(), http.StatusNotFound) 
+        return 
+    } 
+    err = catalog.Sync() 
+    if err != nil { 
+        panic(err) 
+    } 
+    err = json.NewEncoder(w).Encode(stock) 
+    if err != nil { 
+        panic(err) 
+    } 
+})Handlers that return errors (or don’t)
+But, since the conversion can fail, we need to return a suitable error. “Not
+found” isn’t appropriate, since it’s the request itself that’s at fault. For
+example, if someone runs addcopies with an argument that’s not a number:
+addcopies abc bogu5
+The StatusBadRequest code will cover this case, and as a bonus we can
+include the actual error message returned by Atoi:
+http.Error takes a string for the message, but we have err, which is an 
+error. To get the error message as a string, we call the err.Error method;
+the result will be something like:
+strconv.Atoi: parsing "bogu5": invalid syntax
+Now we’ll dash off the “business logic” part of the handler with a gay,
+careless flourish, delegating the paperwork of actually updating the copies
+information to some magic catalog method AddCopies:
+We’ll take care of that in a moment, but two other little jobs remain. First,
+we have to re-sync the modified catalog back to disk, or our changes will be
+lost the next time the server is started:
+http.Error(w, err.Error(), http.StatusBadRequest)
+stock, err := catalog.AddCopies(ID, copies)
+err = catalog.Sync() 
+if err != nil { 
+    panic(err) 
+}If there’s an error here, we don’t want to pass it back to the user. It’s not
+their fault, it’s not their problem, and there’s nothing they can do to fix it.
+But it could also reveal information about the server that they shouldn’t
+know. For example, a failure writing to the file might look something like
+this:
+open /data/supersecret/catalog: I/O error
+We don’t want to leak this private information to the client about where the
+catalog file is supposed to live. Instead, the error should go to the server
+administrator, who is in a position to do something about it (provided they
+read the log files once in a while). That’s why we use panic instead of 
+http.Error here.
+Finally, we’d like to send the new stock level back to the client:
+Again, we panic instead of reporting the error to the client, but for a
+different reason. If the json.Encode call fails it will be because we can’t
+write the response data to w (probably because the client has closed the
+connection early, or there’s a network problem). And in that case, we won’t
+be able to write an error message to w either, so there’s no point trying.
+An AddCopies method on Catalog
+Now, let’s tackle the AddCopies method we need on Catalog. It’s not too
+difficult to write, if we start with something like GetCopies and tweak it to
+suit our needs:
+err = json.NewEncoder(w).Encode(stock) 
+if err != nil { 
+    panic(err) 
+}
+func (catalog *Catalog) AddCopies(ID string, copies int) (int, 
+error) { (Listing books/20)
+Unlike GetCopies, we need a write lock on the catalog, since we’re updating
+it. That’s accomplished by getting the book out of the data map, using the 
++= operator to add the required number of copies, and storing the book back
+in the map. And we return the new number of copies. No TOCTOU errors
+here, since we hold the lock the whole time.
+Here’s the addcopies program itself:
+    catalog.mu.Lock() 
+    defer catalog.mu.Unlock() 
+    book, ok := catalog.data[ID] 
+    if !ok { 
+        return 0, fmt.Errorf("ID %q not found", ID) 
+    } 
+    book.Copies += copies 
+    catalog.data[ID] = book 
+    return book.Copies, nil 
+}
+package main
+ 
+import ( 
+    "books" 
+    "fmt" 
+    "os" 
+    "strconv" 
+) 
+ 
+func main() { 
+    if len(os.Args) != 3 { 
+        fmt.Println("Usage: addcopies <BOOK ID> <HOW MANY>") (Listing books/20)
+This passes the tests, so we’re ready to try out the program.
+Hold on, though! If we’ve done the job right—and the tests seem to show
+that we have—then running this program will modify the catalog. Up to
+now we’ve been running our server with the testdata/catalog file, but
+we’d better not do that any more. We need the test data to stay exactly the
+way it is, because many of the tests rely on it.
+Let’s make a copy of the test catalog, then, so we can try out the addcopies
+program to our heart’s content:
+cp testdata/catalog catalog.play
+With this “play” file, we can alter its contents, mess it up, or accidentally
+delete it altogether, and it won’t affect any tests, so no one will be cross.
+Now we’ll start the server with this play data:
+        return 
+    } 
+    ID := os.Args[1] 
+    copies, err := strconv.Atoi(os.Args[2]) 
+    if err != nil { 
+        fmt.Println(err) 
+        return 
+    } 
+    client := books.NewClient("localhost:3000")
+    stock, err := client.AddCopies(ID, copies) 
+    if err != nil { 
+        fmt.Println(err) 
+        return 
+    } 
+    fmt.Printf("%d copies in stock", stock) 
+}go run ./cmd/server catalog.play
+Before we change anything, let’s see how many copies of abc are in stock
+right now:
+go run ./cmd/getcopies abc
+1 copies in stock
+Very well. Let’s pretend we just received two new copies of this book,
+courtesy of the place you order books from if you want to sell them from
+your bookshop. We’ll use addcopies to update the stock level:
+go run ./cmd/addcopies abc 2
+3 copies in stock
+This sounds reasonable. Let’s make sure that we really changed the
+persistent data, by stopping the server and running it again on the play
+catalog:
+go run ./cmd/server catalog.play
+go run ./cmd/getcopies abc
+3 copies in stock
+Subtracting copies
+We’re almost there. Just subcopies to deal with, so here’s your final
+challenge. Good luck!
+Implementing subcopies
+GOAL: Implement the subcopies program, along with a suitable API
+endpoint and client method, including tests. Don’t forget that subcopies
+should check the current stock level and refuse to do the subtraction unless
+there are sufficient copies in stock.HINT: This is almost exactly the same as AddCopies, apart from the stock
+checking. Start by copying all the code you wrote for AddCopies and
+tweaking it a bit; that’ll get you most of the way.
+SOLUTION: Here are the tests:
+func TestSubCopies_CorrectlyUpdatesStockLevel(t *testing.T) { 
+    t.Parallel() 
+    client := getTestClient(t) 
+    copies, err := client.GetCopies("abc") 
+    if err != nil { 
+        t.Fatal(err) 
+    } 
+    if copies != 1 { 
+        t.Fatalf("want 1 copy before change, got %d", copies) 
+    } 
+    stock, err := client.SubCopies("abc", 1) 
+    if err != nil { 
+        t.Fatal(err) 
+    } 
+    if stock != 0 { 
+        t.Fatalf("want 0 copies after change, got %d", copies) 
+    } 
+} 
+ 
+func TestSubCopies_FailsIfStockLevelToolow(t *testing.T) { 
+    t.Parallel() 
+    client := getTestClient(t) 
+    copies, err := client.GetCopies("abc") 
+    if err != nil { 
+        t.Fatal(err) (Listing books/20)
+Here’s the client method:
+(Listing books/20)
+Here’s the handler:
+    } 
+    if copies != 1 { 
+        t.Fatalf("want 1 copy before change, got %d", copies) 
+    } 
+    _, err = client.SubCopies("abc", 2) 
+    if err == nil { 
+        t.Fatal("want error when stock level too low, got nil") 
+    } 
+}
+func (client *Client) SubCopies(ID string, copies int) (int, 
+error) { 
+    URI := fmt.Sprintf("/subcopies/%s/%d", ID, copies) 
+    stock := 0 
+    err := client.MakeAPIRequest(URI, &stock) 
+    if err != nil { 
+        return 0, err 
+    } 
+    return stock, nil 
+}
+mux.HandleFunc("/v1/subcopies/{id}/{copies}", 
+    func(w http.ResponseWriter, r *http.Request) { 
+    ID := r.PathValue("id") 
+    copies, err := strconv.Atoi(r.PathValue("copies")) And here’s the Catalog method:
+    if err != nil { 
+        http.Error(w, err.Error(), http.StatusBadRequest) 
+        return 
+    } 
+    stock, err := catalog.SubCopies(ID, copies) 
+    if err != nil { 
+        http.Error(w, err.Error(), http.StatusNotFound) 
+        return 
+    } 
+    err = json.NewEncoder(w).Encode(stock) 
+    if err != nil { 
+        panic(err) 
+    } 
+})
+func (catalog *Catalog) SubCopies(ID string, copies int) (int, 
+error) { 
+    catalog.mu.Lock() 
+    defer catalog.mu.Unlock() 
+    book, ok := catalog.data[ID] 
+    if !ok { 
+        return 0, fmt.Errorf("ID %q not found", ID) 
+    } 
+    if book.Copies < copies { 
+        return 0, fmt.Errorf("only %d copies in stock", 
+book.Copies) 
+    } 
+    book.Copies -= copies 
+    catalog.data[ID] = book Finally, this is the subcopies program:
+    return book.Copies, nil 
+}
+package main
+ 
+import ( 
+    "books" 
+    "fmt" 
+    "os" 
+    "strconv" 
+) 
+ 
+func main() { 
+    if len(os.Args) != 3 { 
+        fmt.Println("Usage: subcopies <BOOK ID> <HOW MANY>") 
+        return 
+    } 
+    ID := os.Args[1] 
+    copies, err := strconv.Atoi(os.Args[2]) 
+    if err != nil { 
+        fmt.Println(err) 
+        return 
+    } 
+    client := books.NewClient("localhost:3000")
+    stock, err := client.SubCopies(ID, copies) 
+    if err != nil { 
+        fmt.Println(err) 
+        return 
+    } (Listing books/20)
+User testing
+Let’s try it out, firing up the play server again. We’ll check the latest stock
+level on abc:
+go run ./cmd/getcopies abc
+3 copies in stock
+Very nice. Looks like we re-stocked just in time, too, because a customer
+has come in asking for the book. We’ll use subcopies to record the sale:
+go run ./cmd/subcopies abc 1
+2 copies in stock
+Very good. Let’s also make sure that we can’t accidentally oversell the same
+book. With only 2 copies now remaining, we shouldn’t be able to sell three,
+so let’s try:
+go run ./cmd/subcopies abc 3
+not found
+I’m sorry, what? I mean, we expected some error, but “not found” doesn’t
+make sense here. The book ID abc definitely exists. The problem here is
+that we don’t have sufficient stock to subtract 3 copies.
+Sure, you could talk your way out of it by saying that this message means “I
+didn’t find enough copies”, or something like that. But it won’t really do,
+because this is the same message you get when you enter a non-existent
+book ID, and we’ve got no way to distinguish between these two situations.
+    fmt.Printf("%d copies in stock", stock) 
+}Let’s take a closer look at the section of the handler responsible for this:
+The handler is assuming that if there’s an error from SubCopies, it’s because
+the book ID is not found. Yes, that could be the reason, but it could also be
+because there aren’t enough copies in the catalog to subtract the requested
+amount.
+Sentinel errors
+A smarter handler would distinguish between these two different error
+situations, and return an appropriate status code for the “not enough copies”
+case: perhaps StatusBadRequest. But how can we make that distinction? It’s
+not enough to know that err is not nil: which error is it?
+Up to now, we’ve never really cared what an error specifically was, only
+that it wasn’t nil, because errors are information for users. But now the
+program itself needs to be able to tell one kind of error from another and
+take different actions.
+There’s a handy standard library function for this, called errors.Is.
+Suppose we create a variable using errors.New and give it a name
+indicating what this error means:
+This sentinel error value represents the case where there’s not enough stock
+for us to subtract the required number of copies, and we’ll have the 
+SubCopies method return this value.
+stock, err := catalog.SubCopies(ID, copies) 
+if err != nil { 
+    http.Error(w, err.Error(), http.StatusNotFound) 
+    return 
+}
+var ErrNotEnoughStock = errors.New("not enough stock")Now, in the calling code, we can use errors.Is to ask whether the err we
+received from SubCopies is the “not enough stock” error, specifically:
+This sounds ideal for our case. Let’s add a special case to the handler that
+detects the “not enough stock” error and returns a “bad request” status code
+to the client instead of “not found”.
+(Listing books/20)
+We also now need to modify the Catalog’s SubCopies method to return our
+sentinel error in the “not enough stock” case:
+if errors.Is(err, ErrNotEnoughStock) { 
+    fmt.Println("not enough stock!") 
+}
+stock, err := catalog.SubCopies(ID, copies) 
+if err != nil { 
+    if errors.Is(err, ErrNotEnoughStock) { 
+        http.Error(w, err.Error(), http.StatusBadRequest) 
+    } else { 
+        http.Error(w, err.Error(), http.StatusNotFound) 
+    } 
+    return 
+}
+var ErrNotEnoughStock = errors.New("insufficient stock") 
+ 
+func (catalog *Catalog) SubCopies(ID string, copies int) (int, 
+error) { 
+    catalog.mu.Lock() 
+    defer catalog.mu.Unlock() 
+    book, ok := catalog.data[ID] This is a nice way to distinguish between different kinds of errors, and it’s
+better than calling err.Error() and inspecting the message string. That’s
+too fragile, since we might want to change that text in future without
+changing the meaning of the error. Sentinel values and errors.Is give us a
+more stable way to do it.
+Error wrapping
+When users call SubCopies on a catalog now and the operation fails because
+there aren’t enough copies, they’ll get an error which prints like this:
+not enough stock
+That’s okay, but we could still do more. For example, imagine a customer
+who loves Tracy Borman’s book The Private Lives of the Tudors so much
+that they want to buy 50 copies. This is just the kind of free-spending
+bibliophile that we want to attract with a seamless, efficient customer
+experience.
+But attempting to buy 50 copies gives a flat “not enough stock” error from
+the catalog. Let’s try again with 49 copies. Not enough stock. Try 48 copies.
+Not enough stock. By now the user is surely getting frustrated: “Just tell me
+how many copies there are, and I’ll buy that many!”
+    if !ok { 
+        return 0, fmt.Errorf("ID %q not found", ID) 
+    } 
+    if book.Copies < copies { 
+        return 0, ErrNotEnoughStock 
+    } 
+    book.Copies -= copies 
+    catalog.data[ID] = book 
+    return book.Copies, nil 
+}It would be much more helpful if the error included the actual stock level.
+Something like this:
+not enough stock: 17
+The problem is, though, that we defined our sentinel error as a fixed value.
+And it has to be fixed, otherwise we couldn’t use errors.Is to identify
+whether some err is that exact error.
+Or could we? It turns out Go has one more trick up its sleeve. We can create
+an error value that wraps our NotEnoughStock sentinel error, but also
+includes dynamic information known only at runtime, such as the current
+stock level. To do that, we use the fmt.Errorf function with a special new
+placeholder for the error: %w.
+(Listing books/20)
+This %w (for “wrap”) takes some existing error value (ErrNotEnoughStock)
+and creates a new error value from it, with extra data (book.Copies). But we
+can still use errors.Is to “unwrap” this new error and see that, under the
+hood, it’s the “not enough stock” error:
+This kind of error value is called an error chain in Go, because we can wrap
+an error as many times as necessary, creating a chain of linked error values
+nested inside each other like Russian dolls.
+In practice, though, one level of wrapping is usually enough. If we can
+create a dynamic error message with an underlying sentinel error, that’s all
+we need, and that’s exactly what %w gives us.
+return 0, fmt.Errorf("%w: %d", ErrNotEnoughStock, book.Copies)
+if errors.Is(err, ErrNotEnoughStock) { 
+    ... // true even if `err` wraps `ErrNotEnoughStock` with new 
+data 
+}If we rerun the subcopies program now with this new handler in place, we
+no longer get the bogus “not found” message. Instead:
+unexpected status 400
+Yes, this isn’t fantastic, but at least it’s now distinguishable from the “not
+found” error. Ideally, we’d have the server respond with some JSON data in
+the body that includes the “not enough stock” error and the the current stock
+level information, and have the client decode this appropriately.
+Unfortunately, we’re getting awfully close to the last page of this book, and
+there isn’t time or space to add every feature that we’d like to. We’ve done
+enough for now, and there’s plenty of fun for you left to have on your own,
+as we’ll see in a moment.
+Are we nearly there yet?
+So, to return to a question we asked in the very first chapter, do we have a
+bookstore yet? Not quite, but we’re a lot closer. We’ve solved most of the
+basic problems involved: how to represent book data, how to manage a
+persistent catalog, how to access the catalog concurrently using an HTTP
+server and clients, and how to prevent data races using a mutex.
+What’s next?
+We’ve implemented a few of the features that we know a real bookstore
+system would need: listing all books, finding a book by ID, and managing
+stock levels of a book. There’s still lots more we could do, of course: Happy
+Fun Books still needs ways to add a new book to the catalog, change a
+book’s details, and so on. We also haven’t worried yet about things like
+payments, taking orders, or fulfilment.
+If we were to expose the system to the public over the internet, so that
+customers could browse and order books online, we’d also need to add code
+to handle security, authentication, and authorization. These are interesting
+and important topics in themselves, which regrettably we haven’t space totalk about in this book, but you might enjoy reading Explore Go:
+Cryptography to learn more.
+There’s plenty of work still to be done, then. I hope you don’t feel short-
+changed just because I haven’t told you everything. In some ways that
+would spoil the fun: if I gave you a complete and production-ready
+bookstore system, there’d be nothing left for you to do! As it is, there’s lots
+of scope for you to explore and extend the bookstore program in whichever
+way you choose.
+Happy fun projects
+For example, you could replace the various command-line tools such as 
+find and list with a single tool that handles all bookstore operations. You
+could turn it into a web-based application, so that customers or bookstore
+workers could use a web browser to search the catalog and even place
+orders. You could implement a stock control system, so that the system
+automatically re-orders books we’re running short of.
+You could add a facility for users to leave reviews and feedback on books,
+or to manage multiple bookstores with a central catalog, or to create special
+offers, discounts, and book bundles. You could store cover images of the
+books, or custom information fields, or allow users to read short samples
+online. You could implement a recommendation algorithm: “If you liked
+this book, you’ll love these!”
+You could store the catalog data in a relational database system such as
+PostgreSQL or MySQL instead of a text file. You could add the ability to
+scan the barcode of a book and fetch its catalog information from some
+online API. You could have the system support used books as well as new
+ones. Or you could add the ability to store and sell any kind of product, not
+just books.
+Really, there’s no end to it, and that’s true of programming as a whole.
+There’s always more your program could do, and always more programs to
+write. Not all programs need to serve some economic or practical purpose:it’s perfectly okay to write whatever software you want just because it’s fun
+and you enjoy doing it.
+And if you contribute your packages to the universal library, with a suitable
+open-source licence, so that others can use, improve, and extend them,
+you’ll be doing something really worthwhile. You’ll be adding to the sum of
+human knowledge and making life better for people all over the world, for
+years or even decades to come. Your software might even outlive its creator
+and take on a life of its own.
+You are enough
+You might feel that you’re not experienced enough or smart enough to
+make useful contributions to the universal library, but that’s not the case.
+Believe it or not, most software engineering doesn’t require genius-level
+thinking (the more software engineers you meet, the more you’ll be
+convinced of this).
+Not that I’m saying you’re not a genius, of course: just that you shouldn’t
+need to be. All that’s required for you to write great software is a little
+familiarity with the language fundamentals and a robust development
+workflow guided by tests, such as the one we’ve used in this book. As you
+gain experience by working on more projects, you’ll find it increasingly
+quick and easy to produce solid, reliable software components in Go. It’s
+fun, too.
+There’s a saying that a painting is never finished: it merely stops in
+interesting places. That’s true of programs as well (and perhaps also of this
+book). I hope you enjoy the rest of your journey with Go. May it never end,
+and may it take you to interesting places.About this book
+Who wrote this?
+I’m John Arundel, nice to meet you. I’m a writer, mentor, and consultant
+who’s published many books on Go, Rust, DevOps, software engineering,
+tech careers, and personal focus and growth. If you’d like to know more,
+check out my website:
+https://bitfieldconsulting.com
+The first programming book I ever read, and the one that taught me to
+program, was Steven Vickers’s ZX81 BASIC Programming (you can read it
+online, and even try out an emulated ZX81 for yourself).
+I was very fortunate, as it turns out. It’s a wonderfully well-written book:
+friendly, accessible, amusing, interesting, and confidence-building. If
+anything I’ve written were half as good, I’d feel pretty smug about it.
+It includes this passage, which has stuck with me ever since:
+Whatever else you do, keep using the computer. If you have a question
+“What does it do if I tell it such & such?” then the answer is easy:type it in & see. Whenever the manual tells you to type something in,
+always ask yourself, “What could I type instead?” & try out your
+replies. The more of your own stuff you write, the better you will
+understand the ZX81. Regardless of what you type in, you cannot
+damage the computer. 
+I can’t do better than to give you the same advice.
+Feedback
+If you enjoyed this book, let me know! Email john@bitfieldconsulting.com
+with your comments. If you didn’t enjoy it, or you found a problem, I’d like
+to hear about that too. Your feedback is very welcome, and it helps to
+improve each successive version of the book.
+Get my free newsletter
+To continue your learning journey, subscribe to my free newsletter: you’ll
+get a few emails a month about my latest blog posts, tutorials, and book
+announcements. Your email address is private, you’ll never get spam, and
+you can unsubscribe at any time.
+https://bitfieldconsulting.com/subscribe
+Free updates to future editions
+All my books come with free updates to future editions, for life. Make sure
+you save the email containing your download link that you got when you
+made your purchase. It’s your key to downloading future updates.
+When I publish a new edition, I’ll usually announce it in my newsletter. To
+get your update, re-visit the link in your original download email, and
+you’ll be able to download the new version.
+NOTE: The Squarespace store makes this update process confusing for
+some readers, and I heartily sympathise with them. Your original downloadlink is only valid for 24 hours, and if you re-visit it after that time, you’ll
+see what looks like an error page:
+ 
+But, in tiny print, you’ll also see a “click here” link. Click it, and a new
+email with a new download link will be sent to you.
+The Power of Go: Tools
+Are you ready to unlock the power of Go, master obviousness-oriented
+programming, and learn the secrets of Zen mountaineering? Then you’re
+ready for The Power of Go: Tools.
+It’s the next step on your software engineering journey, explaining how to
+write simple, powerful, idiomatic, and even beautiful programs in Go.
+This friendly, supportive, yet challenging book will show you how master
+software engineers think, and guide you through the process of designing
+production-ready command-line tools in Go step by step.
+The Power of Go: Tests
+Go’s built-in support for testing puts tests front and centre of any software
+project, from command-line tools to sophisticated backend servers and
+APIs. This accessible, amusing book will introduce you to all Go’s testing
+facilities, show you how to use them to write tests for the trickiest things,
+and distils the collected wisdom of the Go community on best practices for
+testing Go programs. Crammed with hundreds of code examples, the book
+uses real tests and real problems to show you exactly what to do, step by
+step.You’ll learn how to use tests to design programs that solve user problems,
+how to build reliable codebases on solid foundations, and how tests can
+help you tackle horrible, bug-riddled legacy codebases and make them a
+nicer place to live. From choosing informative, behaviour-focused names
+for your tests to clever, powerful techniques for managing test dependencies
+like databases and concurrent servers, The Power of Go: Tests has
+everything you need to master the art of testing in Go.
+Know Go
+Things are changing! Go beyond the basics, and master the new generics
+features introduced in Go. Learn all about type parameters and constraints
+in Go and how to use them, with this easy-to-read but comprehensive guide.
+If you’re new to Go and generics, and wondering what all the fuss is about,
+this book is for you! If you have some experience with Go already, but want
+to learn about the new generics features, this book is also for you. And if
+you’ve been waiting impatiently for Go to get generics already so you can
+use it, don’t worry: this book is for you too!
+You don’t need an advanced degree in computer science or tons of
+programming experience. Know Go explains what you need to know in
+plain, ordinary language, with simple examples that will show you what’s
+new, how the language changes will affect you, and exactly how to use
+generics in your own programs and packages.
+As you’d expect from the author of The Deeper Love of Go and The Power
+of Go: Tools, it’s fun and easy reading, but it’s also packed with powerful
+ideas, concepts, and techniques that you can use in real-world applications.
+Further reading
+You can find more of my books on Go here:
+Go books by John Arundel
+You can find more Go tutorials and exercises here:Go tutorials from Bitfield
+I have a YouTube channel where I post occasional videos on Go, and there
+are also some curated playlists of what I judge to be the very best Go talks
+and tutorials available, here:
+Bitfield Consulting on YouTube
+Credits
+Gopher images by the magnificent egonelbre and MariaLetta.

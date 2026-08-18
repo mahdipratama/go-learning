@@ -1,0 +1,335 @@
+1. Happy Fun Books
+Do not taunt Happy Fun Ball. 
+—“Saturday Night Live”, February 1991
+Welcome aboard! It’s your first day as a Go developer at Happy Fun
+Books, a publisher and distributor of books for people who like cheerful
+reading in gloomy times. I’m so glad you could join us, because we have a
+very important job for you: you’ll be helping to build our new online
+bookstore using Go.
+Hello, world
+Don’t worry if that sounds a bit intimidating: we’ll start from scratch, and
+work our way up in easy stages. Actually, that’s what experienced
+programmers do, too, if they’re wise.
+In other words, we don’t start by trying to build something complicated like
+an e-commerce system. That’s much too difficult. Instead, we start with the
+simplest thing we can imagine, and get that working first. Then we add a
+tiny increment to it that gets us a little bit closer to what we need to end up
+with.Our first program
+Let’s start with about the simplest program imaginable: one that prints a
+message. If we can write, run, and understand that program, we’ll have
+covered a lot of useful ground already.
+Here’s the program:
+(Listing hello/1)
+Traditionally, the message we print when we write our first program in any
+language is “Hello, world”. Seems appropriate, doesn’t it? And you can see
+this text in the program code. Don’t worry about the other stuff for the
+moment: let’s run the program first, then analyse how it works.
+Make a new folder on your computer—it doesn’t matter where—and use
+your text editor to create a file named main.go. Copy the example program
+to this file and save it.
+Now open your terminal application in this folder and run the following
+command:
+go run main.go
+If all goes well, you should see a friendly message:
+Hello, world
+package main
+ 
+import "fmt" 
+ 
+func main() { 
+    fmt.Println("Hello, world") 
+}Packages
+Now let’s take a closer look at the program that produces this message.
+How does it work?
+Every Go source file begins with a package clause, like this one:
+All Go code, it turns out, belongs to some package. A “package”, in Go’s
+terms, is nothing more than a way of grouping related bits of code together,
+so that they can be used as a single unit.
+You can name your packages whatever you like, in general, but the name 
+main is special. When you compile the main package, an executable program
+is produced (and that’s what we want here).
+Imports
+As we’ve just seen, a Go program must have at least a main package, but if
+you want to use other packages, you’re welcome. All you need to do is add
+an import declaration like this, naming the extra package you want to use:
+We’ll see what fmt does in a moment, but for now, this line does nothing at
+all but declare some information about the program: it’s going to use the 
+fmt package at some future point.
+Functions
+Here’s another declaration. It’s telling Go about a new function that we’re
+defining:
+package main
+import "fmt"
+func main() {The func keyword, followed by a name (in this case main), declares a new
+function. What’s a function?
+Declaring a function
+Just like a package, a function is a way of organising your code into a little
+unit and giving it a name. A single program can contain many packages,
+and each of those packages can contain many functions.
+And, just as the main package is special, because it’s the package that
+imports all others, the main function is special too. It’s where the execution
+of your program will actually start, so it’s the function that calls all others,
+if there are any others.
+Notice that this line ends with an opening curly brace, {. That means “Here
+comes the function body”.
+Go considers everything following the opening curly brace to be part of the
+body of the function we’re defining, until it sees a corresponding closing
+brace, which ends the function definition.
+Calling a function
+Our main function body is nice and simple, consisting of this single line:
+This is a statement. Whereas a declaration (such as the import declaration
+we just saw) gives Go some descriptive information about our program
+(“We’re going to use the fmt package”), a statement tells Go to do
+something: “Print this message!”, for example.
+func main() {
+fmt.Println("Hello, world")To call a function, we write its name, prefixed by the name of the package it
+belongs to (fmt.Println), and followed by a list of arguments in
+parentheses (“Hello, world”).
+fmt, which Go programmers usually pronounce as “fumpt”, deals with
+formatting text in various ways, including printing it to the terminal. And
+the specific function we’re using here is Println, which is short for “print
+line”. It prints whatever message we give it:
+Hello, world
+If we’d written a different message here, then that message would be
+printed instead when the program runs. Try changing the message, running
+the program again with go run main.go, and seeing what happens.
+We’ve already learned quite a bit from even this fairly short program: how
+to declare a package, how to import other packages, how to define a
+function, how to call a function, and how to pass arguments to it. We also
+learned one way to print things, which is handy.
+A challenge
+Now here’s your first code challenge: to extend this program in an
+interesting way, using what you’ve just learned.
+Creating a hello function
+GOAL: Modify this program to add a declaration for a new function named
+hello. Your function should print the same “Hello, world” message that
+we’ve just seen. Modify the main function so that, instead of calling 
+fmt.Println to print the message, it calls your new hello function. Check
+the result by running the go run main.go command again.
+If you’re not sure what to do, or you’d like a hint, read on.HINT: Let’s start with how to declare our new hello function. You know
+that the func keyword introduces a new function, and you’ve seen how it’s
+used to declare main. Use it in exactly the same way to declare your hello
+function. Can you see what to do?
+Inside the curly braces marking the body of the hello function, we need
+some code that prints the “Hello, world” message. Well, you already know
+how to do that: the exact same way that main does it.
+Finally, you need to modify the existing main function so that it calls hello
+instead of fmt.Println. And you know that you call a function by writing
+its name, followed by parentheses (if there are no arguments, then you don’t
+need to put anything between the parentheses, but they still need to be
+there).
+If that function is in a different package, like fmt, then we need to use that
+package name as a prefix to the function call, but that’s not the case here.
+When the function we’re calling is in the “current” package—the one we’re
+in right now—then we can give only its name, without a prefix.
+SOLUTION: Well, here’s how I did it. See how it compares to your
+version:
+package main
+ 
+import "fmt" 
+ 
+func hello() { 
+    fmt.Println("Hello, world") 
+} 
+ 
+func main() { 
+    hello() 
+}(Listing hello/2)
+Function ordering
+By the way, it doesn’t matter in what order you define your functions: you
+don’t have to define the function before you call it. Write your functions in
+whatever order you think is most logical for people reading the program. To
+me, that usually means putting the most important or commonly-used
+functions first, but it’s up to you.
+Dealing with data
+So, do we have a bookstore yet? Not quite, but we’re on the way. What’s
+the least we could do that would still be of some use to the staff of Happy
+Fun Books? Well, one thing we could do is, instead of printing “Hello,
+world”, we could print a list of books that are in stock. How would we do
+that?
+Printing a fixed message would be no good here, because Happy Fun Books
+has many branches, and the stock at each branch changes frequently. While
+the logic of our program (“print all the books”) won’t change, the specific
+data it deals with will vary from place to place and time to time.
+Values
+By “data”, we really mean some piece of information, like the title of a
+book, its price, or the address of a customer. These are all data values—bits
+of data.
+Can we distinguish usefully between different kinds of data? Yes. For
+example, some data is in the form of text (a book title, for example). We call
+this string data, meaning a sequence of things, like “a string of pearls”, only
+in this case it’s a string of letters.
+We’ve used a string value already in our “Hello, world” program. It was the
+message we passed to fmt.Println:Notice that when this message is printed, it doesn’t include the quote
+characters (") at either end. These aren’t part of the string itself: they’re
+markers indicating to Go where the string begins and ends.
+A piece of data like "Hello, world" is called a value. Suppose our
+bookstore is very small, and only has one book in stock at the moment. We
+could print its details by writing them as a string value:
+(Listing books/1)
+If you want to run this program, create a new folder for it, open a new 
+main.go file, and copy this code into it. Or edit the “Hello, world” program
+we wrote earlier in this chapter, so that it looks like this one. Then use go 
+run main.go as you did before.
+Notice what’s different about this program. We have two statements in the 
+main function now, not one. They’re both function calls, and they both call 
+fmt.Println, but with different arguments—different values.
+And we said that, while the logic of the program won’t change, the data
+might. We probably won’t need to change the “Books in stock:” message,
+but we certainly will need to change the second message, about the specific
+book we have in stock.
+fmt.Println("Hello, world")
+package main
+ 
+import "fmt" 
+ 
+func main() { 
+    fmt.Println("Books in stock:") 
+    fmt.Println("'Master and Commander', by Patrick O'Brian") 
+}To make that easier, we’ll store our book information in a variable. Let’s
+see how to do that.
+Variables
+As the name suggests, variables are for storing data that might change (by
+contrast, values that don’t change during the running of the program are
+called constants).
+A variable is a way of giving a name to a data value, so that we can refer to
+it by that name later. Just as we declared a new function by using the func
+keyword, we can declare a new variable using the var keyword, like this:
+You could think of a variable as being like a little box where we can keep
+bits of data—values—so they don’t get lost. Each box has a label, so we
+know what’s inside. In this case, the label is book, and whenever we use that
+name in the rest of the program, Go will open the box and retrieve the value
+for us.
+For example, we could write:
+Notice that this time, there are no quotes around the word book. That’s
+because we’re not asking Go to print the string “book”. Instead, we’re
+saying “Find the variable named book, and print the value stored inside it.”
+Here’s a new version of the program that stores the book information in a
+variable:
+var book = "'Master and Commander', by Patrick O'Brian"
+fmt.Println(book)
+package main
+ 
+import "fmt" (Listing books/2)
+On the face of it, this doesn’t seem much more useful than what we did
+before, which was giving the book information as a quoted string. By the
+way, that kind of value is called a literal, as in “It’s literally this string!”
+The change we’ve made here is to first assign that literal value to a variable,
+and then use the identifier book to refer to that variable later on. The effect
+of the program is the same as when we used a literal, but that’s about to
+change!
+Assigning values to variables
+The point about variables is that we can vary them: we can assign a new
+value to them, which will replace the old one.
+What do you think the following program will print?
+ 
+func main() { 
+    fmt.Println("Books in stock:") 
+    var book = "'Master and Commander', by Patrick O'Brian" 
+    fmt.Println(book) 
+}
+package main
+ 
+import "fmt" 
+ 
+func main() { 
+    fmt.Println("Books in stock:") 
+    var book = "'Master and Commander', by Patrick O'Brian" 
+    fmt.Println(book) 
+    book = "'A Morbid Taste for Bones', by Ellis Peters" (Listing books/3)
+Let’s run it with go run main.go and see if you’re right:
+Books in stock: 
+'Master and Commander', by Patrick O'Brian 
+'A Morbid Taste for Bones', by Ellis Peters
+A well-stocked bookstore indeed! So, once we’ve created the new variable 
+book with our var declaration, we can then give it a new value any time we
+like by writing an assignment statement:
+Creating your own variables
+So, here’s another challenge for you, to help consolidate what you’ve
+learned.
+GOAL: Write a Go program that creates two string variables, title and 
+author, and gives them values: use the title and author of one of your own
+favourite books. Print these out. Then set title and author to different
+values, corresponding to another book. Print these out too.
+HINT: We won’t need any new function this time. The important thing is to
+declare our variables and give them their initial values, and you know how
+to do that, using the var keyword. You also know how to print them, by
+calling fmt.Println and passing it the name of the variable you want to
+print.
+Then we need to assign new values to both variables, and you’ve seen how
+to write an assignment statement to do that. All set?
+    fmt.Println(book) 
+}
+book = "'A Morbid Taste for Bones', by Ellis Peters"SOLUTION: Here’s my version:
+(Listing books/4)
+I cheated a little bit here, because I didn’t tell you that you can pass multiple
+arguments to fmt.Println (or to any function), by separating them with
+commas. Well, now you know!
+But if you printed title and author with consecutive calls to fmt.Println,
+that’s totally fine. This way of doing it saves a bit of typing, that’s all.
+Adding a printBook function
+Notice that we repeated the exact same line of code here twice:
+You might be wondering: could we declare some function that does this
+instead, and then call it with different values, like the way we call 
+fmt.Println with different values?
+package main
+ 
+import "fmt" 
+ 
+func main() { 
+    fmt.Println("Books in stock:") 
+    var title = "The City & The City" 
+    var author = "China Miéville" 
+    fmt.Println(title, "by", author) 
+    title = "The Sugar Barons" 
+    author = "Matthew Parker" 
+    fmt.Println(title, "by", author) 
+}
+fmt.Println(title, "by", author)Certainly we could:
+(Listing books/5)
+Declaring function parameters
+Notice that our new function printBook is slightly different to the hello
+function we created earlier. Unlike that previous function, this one declares
+parameters—that is, it expects arguments to be passed when it is called.
+In this function declaration, we’re telling Go that when we call this
+function, we will pass it two values, to which we’ll assign the working
+package main
+ 
+import "fmt" 
+ 
+func main() { 
+    fmt.Println("Books in stock:") 
+    var title = "The City & The City" 
+    var author = "China Miéville" 
+    printBook(title, author) 
+    title = "The Sugar Barons" 
+    author = "Matthew Parker" 
+    printBook(title, author) 
+} 
+ 
+func printBook(title, author string) { 
+    fmt.Println(title, "by", author) 
+}
+func printBook(title, author string)names title and author. Also, both values contain the same kind of data,
+namely string.
+The parameter names title and author happen to be the same as the ones
+we used for the corresponding variables in the main function, but this is a
+coincidence. We could have written, for example:
+But it makes sense to use the same names for variables that contain the
+same data, doesn’t it? And that’s exactly what they are. Inside the 
+printBook function, the names title and author are available for us to use
+as variables, and they’ll contain whatever was passed to the function at the
+place it was called.
+Here’s what we know so far
+We’ve covered some really important ground in this chapter. You can now
+read any Go program and understand what package it belongs to, what other
+packages it imports, and what functions it declares.
+You know that functions consist of statements, and you know about one
+kind of statement, which is a function call. You also know how to pass
+arguments to a function (like the message “Hello, world”).
+You’ve learned about how to deal with data, such as string values, how to
+store data in named boxes called “variables”, how to declare function
+parameters, and how to use those parameters in the body of the function.
+In the next chapter, let’s extend this knowledge to cover more different
+types of data.
+func printBook(nameOfBook, personThatWroteIt string)

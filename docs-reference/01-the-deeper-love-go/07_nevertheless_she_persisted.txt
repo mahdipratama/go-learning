@@ -1,0 +1,691 @@
+7. Nevertheless, she persisted
+In the previous chapter we developed the idea of the catalog as a smart
+repository for book data. It’s now become an object that provides methods
+for users to list, query, and add books. We also extended the Book object to
+allow (and validate) changes to the details of a particular book: for example,
+updating the number of copies.
+That’s nice. But now that we can make changes to the catalog data, we have
+a new problem to solve: how to make those changes persist.
+Making persistent changes
+Right now, the catalog is initialised by calling GetCatalog, and its contents
+are determined by the code of that function. That won’t work for a real
+bookstore, where we expect the book information in the catalog to change
+dozens of times a day. It wouldn’t be practical to keep asking the developers
+to change the source code and release a new version of the books package
+every time someone buys a book!
+Besides, we want the books package to be usable by many different stores,
+each with their own ever-changing catalogs. We’re going to need some wayto store this information outside of the Go program itself.
+Storing the catalog on disk
+Suppose we wrote a program to add a new book. We could ask the user to
+enter the title, author, and other details of the new book, and then we could
+add the new book to the catalog using the AddBook method we wrote in the
+previous chapter.
+What happens, though, when the user next runs the find program to search
+for the new book? Well, nothing, because find gets its catalog data from the
+GetCatalog function, and that won’t have changed. The new book
+information has been lost.
+That’s because we’re storing the catalog data in a map, and like all variables
+in a Go program, its contents are only preserved as long as the program is
+running. Once the program exits, everything it stored in memory is wiped,
+to make room for other programs to store their own variables.
+That makes sense, but for our bookstore we’ll need a way to store our
+catalog data in a file on disk, not in the program’s temporary memory. Once
+we have that, we’ll be able to make persistent changes to it.
+To do this, we’ll need a few new bits of Go knowledge: how to read and
+write disk files, how to turn a Go variable into something that can be stored
+in a file, and how to read that stored data back into a variable.
+Getting the catalog from a disk file
+Let’s first decide what we want our updated programs to look like. Here’s
+the find program we have at the moment, for example:
+func main() { 
+    if len(os.Args) != 2 { 
+        fmt.Println("Usage: find <BOOK ID>") 
+        return (Listing books/16)
+What would we have to change in this code to get the catalog from a file on
+disk? Well, not all that much, it turns out: the only extra information we’d
+need to supply would be the path to that file.
+So, instead of GetCatalog, let’s imagine we had a function OpenCatalog that
+takes a path, like this:
+Handling errors
+That file path can be whatever we want, so long as the named file actually
+exists and contains the catalog data. Okay, but what if it doesn’t?
+I mean, what if we pass the path "catalog", as in this example, and it turns
+out that file doesn’t exist, or contains some different kind of data, or
+nothing at all? In fact, there are all sorts of errors we could encounter when
+trying to read things from disk, so we need a way to handle that situation.
+As we saw in the previous chapter with the SetCopies method, Go has a
+standard way of communicating run-time error information: the error type.
+    } 
+    catalog := books.GetCatalog() 
+    ID := os.Args[1] 
+    book, ok := catalog.GetBook(ID) 
+    if !ok { 
+        fmt.Println("Sorry, I couldn't find that book in the 
+catalog.") 
+        return 
+    } 
+    fmt.Println(book) 
+}
+catalog := books.OpenCatalog("catalog")Functions can return a value of this type to signal the particular error they
+encountered (or nil if there wasn’t one).
+Let’s do the same here, then, and imagine that OpenCatalog returns some
+possible error value:
+There’s not much we can really do in this program if there is an error
+reading the catalog, so we’d better report it to the user and exit:
+The return is important, by the way, because if we can’t read the catalog,
+there’s no point continuing. Any time you have an if err != nil block in
+your Go programs (and you’ll have a lot of them), it should always end in a 
+return. Otherwise, weird things will happen: in this case, we won’t be able
+to find anything in catalog because it’ll be empty.
+The rest of the program doesn’t need to change, since if we get past this
+point we have the same catalog data as we did before. And, since the find
+program doesn’t modify the catalog, we don’t need to worry about writing
+the catalog data back to disk yet.
+All we need at the moment is OpenCatalog, so let’s work on that.
+Testing OpenCatalog
+Great, so what would a test for this OpenCatalog function look like? We
+could call it to read the catalog data from some file, and then check that the
+resulting catalog contains the books we expect.
+catalog, err := books.OpenCatalog("catalog")
+if err != nil { 
+    fmt.Printf("opening catalog: %v\n", err) 
+    return 
+}We already have a test that looks very much like this, for the GetAllBooks
+function:
+(Listing books/16)
+The test for OpenCatalog could be very like this, except that we’d call 
+OpenCatalog instead of getTestCatalog. Let’s write it along those lines,
+func TestGetAllBooks_ReturnsAllBooks(t *testing.T) { 
+    t.Parallel() 
+    catalog := getTestCatalog() 
+    want := []books.Book{ 
+        { 
+            Title:  "In the Company of Cheerful Ladies", 
+            Author: "Alexander McCall Smith", 
+            Copies: 1, 
+            ID:     "abc", 
+        }, 
+        { 
+            Title:  "White Heat", 
+            Author: "Dominic Sandbrook", 
+            Copies: 2, 
+            ID:     "xyz", 
+        }, 
+    } 
+    got := catalog.GetAllBooks() 
+    slices.SortFunc(got, func(a, b books.Book) int { 
+        return cmp.Compare(a.Author, b.Author) 
+    }) 
+    if !slices.Equal(want, got) { 
+        t.Fatalf("want %#v, got %#v", want, got)
+    } 
+}then:
+func TestOpenCatalog_LoadsCatalogDataFromFile(t *testing.T) { 
+    t.Parallel() 
+    catalog, err := books.OpenCatalog("testdata/catalog") 
+    if err != nil { 
+        t.Fatal(err) 
+    } 
+    want := []books.Book{ 
+        { 
+            Title:  "In the Company of Cheerful Ladies", 
+            Author: "Alexander McCall Smith", 
+            Copies: 1, 
+            ID:     "abc", 
+        }, 
+        { 
+            Title:  "White Heat", 
+            Author: "Dominic Sandbrook", 
+            Copies: 2, 
+            ID:     "xyz", 
+        }, 
+    } 
+    got := catalog.GetAllBooks() 
+    slices.SortFunc(got, func(a, b books.Book) int { 
+        return cmp.Compare(a.Author, b.Author) 
+    }) 
+    if !slices.Equal(want, got) { 
+        t.Fatalf("want %#v, got %#v", want, got)
+    } 
+}To even get this test to compile, we need to write a dummy OpenCatalog
+function. That’s easy:
+Obviously this shouldn’t pass the test, since the catalog is empty. Let’s
+make sure it doesn’t:
+go test
+--- FAIL: TestOpenCatalog_LoadsCatalogDataFromFile (0.00s) 
+    books_test.go:107: want []books.Book{books.Book{Title:"In the 
+    Company of Cheerful Ladies", Author:"Alexander McCall Smith", 
+    Copies:1, ID:"abc"}, books.Book{Title:"White Heat", 
+    Author:"Dominic Sandbrook", Copies:2, ID:"xyz"}}, got 
+    []books.Book(nil)
+The data format
+To make the test pass, we’ll have to change OpenCatalog to actually read the
+catalog data from the specified file, put it into a Go map, and return it. We’ll
+also need to create the test file containing the data.
+Creating the test data
+What should that look like, then? Here’s the Go code specifying our test
+catalog:
+func OpenCatalog(path string) (Catalog, error) { 
+    return Catalog{}, nil 
+}
+books.Catalog{ 
+    "abc": { 
+        Title:  "In the Company of Cheerful Ladies", 
+        Author: "Alexander McCall Smith", 
+        Copies: 1, There are any number of possible formats we could use to store this data in
+a file, but let’s pick one you’re probably already familiar with: JSON.
+Our test catalog, expressed in JSON format, looks like this:
+(Listing books/17)
+        ID:     "abc", 
+    }, 
+    "xyz": { 
+        Title:  "White Heat", 
+        Author: "Dominic Sandbrook", 
+        Copies: 2, 
+        ID:     "xyz", 
+    }, 
+}
+{ 
+  "abc": { 
+    "Title": "In the Company of Cheerful Ladies", 
+    "Author": "Alexander McCall Smith", 
+    "Copies": 1, 
+    "ID": "abc" 
+  }, 
+  "xyz": { 
+    "Title": "White Heat", 
+    "Author": "Dominic Sandbrook", 
+    "Copies": 2, 
+    "ID": "xyz" 
+  } 
+}It’s pretty similar to the Go syntax, which is comforting. And, since JSON
+is such a widely-used data format, the Go standard library includes code we
+can call to read and write JSON data for us, in the encoding/json package.
+A working OpenCatalog function
+Reading and writing files is even more common, and the standard library os
+package gives us the tools to do that too. Here’s a version of OpenCatalog
+that could work. First, we’ll need to add some new imports:
+Now we can write:
+(Listing books/17)
+import ( 
+    "encoding/json" 
+    "os" 
+)
+func OpenCatalog(path string) (Catalog, error) { 
+    file, err := os.Open(path) 
+    if err != nil { 
+        return nil, err 
+    } 
+    defer file.Close() 
+    catalog := Catalog{} 
+    err = json.NewDecoder(file).Decode(&catalog) 
+    if err != nil { 
+        return nil, err 
+    } 
+    return catalog, nil 
+}Let’s break it down. First, we use the os.Open function to open the file
+we’re interested in:
+It takes the file path we supplied (for example, "testdata/catalog") and
+returns an object we’ve named file that lets us read the contents of that
+file. We needn’t worry about what type it is for the moment. It’s usually
+referred to as a “file handle”: a thing that lets you do things with an open
+file.
+As we saw earlier, though, there could be an error opening the file (maybe it
+doesn’t exist), which is why we need to receive and check the err result,
+too:
+If there is an error, OpenCatalog will return the err value to its caller so they
+can decide what to do about it.
+In the updated version of our find program, for instance, we’ll print it out,
+so users might see a message like:
+opening catalog: open testdata/catalog.json: no such file or 
+directory
+The defer keyword
+Assuming there wasn’t an error, and that file has now been initialised to a
+handle representing the data file, we then do this:
+file, err := os.Open(path)
+if err != nil { 
+    return nil, err 
+}
+defer file.Close()It’s good practice to call the Close method on a file handle when we’re done
+with it, so that Go knows we won’t be accessing that file anymore and it can
+reclaim the associated memory.
+So, in theory, we could have called file.Close() directly when the function
+exits. But there isn’t just one exit point for this function: there are three. It
+can return because there’s an error from os.Open, or it can return because
+there’s an error from Decode, or it can return because it’s done and
+everything’s okay. We need to close the file in all three of those situations.
+It would be annoying to have to write file.Close() in three different
+places, so that’s what the defer keyword takes care of. It means “be sure to
+call file.Close() on exit, however and wherever this function happens to
+return”.
+defer is quite common in Go programs, because there’s often some kind of
+cleanup we need to do when we’re done with a resource, such as a file.
+Using defer to schedule the cleanup for later means that we don’t have to
+worry about all the different ways the function can exit: the deferred
+statement will be executed regardless.
+Returning errors
+The fact that reading the catalog might fail means that OpenCatalog has to
+return two things: the catalog and any run-time error it encounters.
+(Listing books/17)
+The convention with Go functions that return both a data value and an error
+like this is that only one of those two results will be meaningful, never both
+at once.
+If we successfully opened the catalog, then the error result will be nil,
+meaning that the Catalog result is valid. On the other hand, if there was a
+func OpenCatalog(path string) (Catalog, error) {problem, then the error will explain what it was, and the Catalog value
+shouldn’t be used. In the latter case, the function might say, for example:
+Remember, the values in a return statement are in the same order as the
+function’s declared results: in this case, (Catalog, error). We’re returning 
+nil here for the Catalog, and err for the error.
+The same thing happens if we hit an error during the JSON decoding
+process (which we’ll talk more about in a moment):
+On the other hand, supposing we get past this and we’ve successfully
+decoded all the data, then the Catalog value will be ready for use, and the
+error value will be nil:
+If you find this sort of thing confusing at first, don’t worry. It’s so common
+for Go functions to return “something and error” like this that you’ll soon
+get used to seeing it.
+Decoding JSON data
+Let’s look again in more detail at the line that does the actual JSON
+decoding:
+return nil, err
+err = json.NewDecoder(file).Decode(&catalog) 
+if err != nil { 
+    return nil, err 
+}
+return catalog, nil
+err = json.NewDecoder(file).Decode(&catalog)(Listing books/17)
+There’s a lot happening here. First of all, we call json.NewDecoder, and pass
+it the file object we received from a successful os.Open. We’re asking Go
+to give us another object—the “decoder”—that will read JSON data from
+our file.
+Calling NewDecoder creates the decoder, but it doesn’t actually do any
+decoding. That only happens once we call the Decode method on the
+decoder object, which we do on the same line.
+We could have split this into two lines, as follows:
+But, since we never use that decoder variable for anything else, we needn’t
+bother with it. Instead, we can chain these two function calls together, so
+that we’re implicitly calling Decode on the result of json.NewDecoder:
+This is another pattern that looks puzzling at first sight, but soon becomes
+familiar.
+Passing a pointer to Decode
+Why are we passing a pointer to the catalog, rather than the catalog itself?
+That’s because Decode has to take a pointer, and to see why, let’s consider
+what would happen if it didn’t.
+We could imagine that, in an alternate universe, maybe the Decode method
+could work differently. For example, it could return the Go value it
+decoded, along with any error, something like this:
+decoder := json.NewDecoder(file) 
+err := decoder.Decode(&catalog)
+err = json.NewDecoder(file).Decode(&catalog)That looks straightforward, but how would we write Decode in that case?
+Specifically, what Go data type would we declare it to return?
+We don’t know: it depends what the JSON data contains. It could be any
+type, or a bunch of different types, including types that won’t exist until
+they’re defined in the user’s program (such as Catalog). The standard
+library authors can’t name any particular result type for Decode, which is
+why it doesn’t return a result at all.
+You’ve already seen, in the section on pointers in the previous chapter, that
+functions can take a pointer to a variable and use that pointer to change the
+variable’s contents. That’s exactly what Decode does. It takes a pointer to the
+variable we’re interested in (catalog), and writes the decoded data into that
+variable.
+Reading the catalog
+So, if Decode doesn’t return an error, then we should find that the catalog
+variable now contains the data represented in the file. Let’s see if it really
+does:
+go test
+--- FAIL: TestOpenCatalog_LoadsCatalogDataFromFile (0.00s) 
+    books_test.go:86: open testdata/catalog: no such file or 
+directory
+Okay, we’re not quite there yet, but this error actually makes sense. We
+didn’t create the data file yet for the test to read, so let’s do that. We could
+put the file anywhere in the project repo, but let’s create a folder for it
+named testdata, so that it’s clear it’s not part of the project code itself.
+catalog, err := decoder.Decode()
+func (decoder Decoder) (???, error) // what goes here?Passing the test
+We’ll create testdata/catalog and put our JSON catalog data into it. Here
+it is again:
+(Listing books/17)
+Now that we have some catalog data for the test to read, we should get a bit
+further. Let’s see:
+go test
+PASS
+Simulating a data format error
+Good. Just for fun, and since we’ve already seen what happens if the 
+os.Open fails, let’s also see what it looks like if the JSON decoding doesn’t
+work for some reason. We’ll temporarily replace the test data with some
+nonsense that’s not valid JSON:
+{ 
+  "abc": { 
+    "Title": "In the Company of Cheerful Ladies", 
+    "Author": "Alexander McCall Smith", 
+    "Copies": 1, 
+    "ID": "abc" 
+  }, 
+  "xyz": { 
+    "Title": "White Heat", 
+    "Author": "Dominic Sandbrook", 
+    "Copies": 2, 
+    "ID": "xyz" 
+  } 
+}and run the test again:
+--- FAIL: TestOpenCatalog_LoadsCatalogDataFromFile (0.00s) 
+    books_test.go:86: invalid character 'l' in literal false 
+(expecting 'a')
+Interesting! Go did its level best to try to make some sense out of the string
+“flibber”, and it looks like it started interpreting the initial “f” as the
+beginning of the JSON literal value false. But when it hit the second
+character, “l”, it soon realised this can’t be valid JSON at all, and gave up.
+We don’t expect to see JSON decoding errors in the real program, since
+we’re going to be creating that JSON data ourselves. But a decoding error
+can happen in principle, even if we don’t expect it to, so our code must
+cope with this possibility. Unexpected things do happen quite often, as
+you’ve probably noticed.
+The updated find program
+Now that we have OpenCatalog working, we should be able to run the new
+version of find that we modified to use it. Here’s the program:
+flibber
+func main() { 
+    if len(os.Args) != 2 { 
+        fmt.Println("Usage: find <BOOK ID>") 
+        return 
+    } 
+    catalog, err := books.OpenCatalog("testdata/catalog") 
+    if err != nil { 
+        fmt.Printf("opening catalog: %v\n", err)
+        return 
+    } 
+    ID := os.Args[1] (Listing books/17)
+We’re using the catalog data file we created in testdata, because we don’t
+have a “real” catalog file yet, but that’s okay. We only need to prove that we
+can read and query any valid catalog file. Let’s try:
+go run ./cmd/find abc
+In the Company of Cheerful Ladies by Alexander McCall Smith 
+(copies: 1)
+Updating list to use OpenCatalog
+This is encouraging, so let’s also update list to use the new “persistent
+catalog” functionality. See if you can write it yourself first, based on the
+changes we already made to the similar find program.
+GOAL: Update the list program to read catalog data from the 
+testdata/catalog file using the new OpenCatalog function, instead of
+calling GetCatalog as the old version did.
+HINT: For the moment, we don’t need to do anything different from find
+here. We need to call OpenCatalog with the filename, check the error result,
+and if it’s not nil, print the error and exit.
+    book, ok := catalog.GetBook(ID) 
+    if !ok { 
+        fmt.Println("Sorry, I couldn't find that book in the 
+catalog.") 
+        return 
+    } 
+    fmt.Println(book) 
+}SOLUTION: Here’s my version, for comparison:
+(Listing books/17)
+Let’s run it to make sure:
+go run ./cmd/list
+In the Company of Cheerful Ladies by Alexander McCall Smith 
+(copies: 1) 
+White Heat by Dominic Sandbrook (copies: 2)
+It might seem like we’ve gone to a lot of trouble to achieve exactly the
+same result as we had before, but software engineering often feels like that.
+The point, though, is that now we have a much more powerful catalog
+program.
+It’s no longer limited to only the single fixed catalog that the author saw fit
+to hard-code into the Go program itself. Instead, it can read data from a file,
+and that means we can have lots of different catalogs.
+We can also now remove the old GetCatalog function from the books
+package, since we no longer use it anywhere.
+A program to change catalog data
+func main() { 
+    catalog, err := books.OpenCatalog("testdata/catalog") 
+    if err != nil { 
+        fmt.Printf("opening catalog: %v\n", err)
+        return 
+    } 
+    for _, book := range catalog.GetAllBooks() { 
+        fmt.Println(book) 
+    } 
+}In principle, we could leave it at that: we could use the software to run a
+bookstore now. The Go programs we’ve built can read and query the
+catalog data in the JSON file, even though they can’t yet alter it. That’s not
+strictly necessary, since users could make any necessary changes
+themselves by editing the data file directly (for example, to add a new
+book).
+That’s a little inconvenient, though, and it also opens up the possibility that
+they might make a mistake (users have been known to do this from time to
+time, like programmers). If there’s even the smallest error in the data, such
+as a missing comma, or a mis-typed field name, then the Go code won’t be
+able to read it, and all the catalog information will be lost.
+Writing the catalog
+But if Go programs can read JSON data, then writing it should be possible
+too. In other words, if any changes need to be made to the catalog, we’d
+like to be able to make them using a program similar to find or list. Then
+we can guarantee that the stored data will always be valid (assuming our
+code is correct).
+As usual, then, we’ll start by sketching out the kind of program we’d like to
+write, and then see what changes we need to make to the books package to
+support it. So, what shall we write?
+Well, in theory users might want to edit any part of a book’s information,
+such as its title, author, or anything else. That would be rather tedious to do
+with a command-line tool, though, and writing the tool wouldn’t be much
+fun either. Instead, let’s focus on one small task that we can imagine
+bookstore employees doing a lot: updating the number of copies of a book
+in stock.
+For example, suppose they could run a command like this to set the number
+of copies of book abc to 2:
+copies abc 2Sketching a possible copies program
+Let’s sketch what the code for copies might look like, and see what we can
+come up with. Why don’t you start?
+GOAL: Write the main function for our imagined copies tool, along the
+same lines as the existing find and list programs. It doesn’t have to work
+yet, or even compile. This is only a design exercise.
+How would you like such a program to look? What changes would we need
+to make to the books package to make that vision a reality?
+HINT: The copies program needs to do a few things, some of which we’ve
+already done in other programs. It needs to get the catalog data from the
+file; it needs to update the book with the given ID to the given number of
+copies; and it needs to store that modified catalog data back to the file
+again.
+There’s a fair amount to do here, but you’re not starting from scratch. Use
+the find program as a starting point. If there’s no existing function or
+method to do what’s required, you’ll have to invent one. You don’t have to
+implement it yet, merely imagine how it might be called, and call it.
+SOLUTION: Well, there’s no right answer here, since the point is to use
+your imagination. Here’s my first sketch, which may look fairly different
+from yours:
+func main() { 
+    if len(os.Args) != 3 { 
+        fmt.Println("Usage: copies <BOOK ID> <NUMBER OF COPIES>") 
+        return 
+    } 
+    catalog, err := books.OpenCatalog("testdata/catalog") 
+    if err != nil { (Listing books/17)
+Breaking it down
+We know this doesn’t work yet. The question is, does it look reasonable? In
+other words, as you read this code, can you more or less figure out what it’s
+supposed to do? Let’s go step by step. Here’s the first part:
+        fmt.Printf("opening catalog: %v\n", err)
+        return 
+    } 
+    ID := os.Args[1] 
+    copies, err := strconv.Atoi(os.Args[2]) 
+    if err != nil { 
+        fmt.Println(err) 
+        return 
+    } 
+    err = catalog.SetCopies(ID, copies) 
+    if err != nil { 
+        fmt.Printf("updating book: %v\n", err) 
+        return 
+    } 
+    err = catalog.Sync("testdata/catalog") 
+    if err != nil { 
+        fmt.Printf("writing catalog: %v\n", err)
+        return 
+    } 
+    fmt.Printf("Updated book %v to %d copies\n", ID, copies) 
+}
+if len(os.Args) != 3 { 
+    fmt.Println("Usage: copies <BOOK ID> <NUMBER OF COPIES>") We now expect three values in os.Args: ignoring the first, which is always
+the path to the program binary, the ones we care about are the book ID and
+the new number of copies, respectively. If we don’t get those, we print an
+error message and exit.
+Assuming we get past that stage, we then need to open the catalog, and this
+code is exactly the same as for the other two programs:
+We’ll extract the book ID from os.Args and put it in a variable, just to give
+it a friendly name that makes clear to readers of this program what it’s for:
+We’ll do the same with the number of copies, but this needs an extra step:
+All the elements of os.Args are strings, but we want the number of copies
+as an integer, and you already know that you can’t put a string where an
+integer should go: that’s a type error. We need to do a conversion.
+    return 
+}
+catalog, err := books.OpenCatalog("testdata/catalog") 
+if err != nil { 
+    fmt.Printf("opening catalog: %v\n", err) 
+    return 
+}
+ID := os.Args[1]
+copies, err := strconv.Atoi(os.Args[2]) 
+if err != nil { 
+    fmt.Println(err) 
+    return 
+}For example, suppose the user runs this command:
+copies abc 2
+In this case, the value of os.Args[2] is the string "2". To convert that into
+the number 2, we use the standard library strconv.Atoi (“ASCII to
+integer”) function:
+The string we’re trying to convert might not be a valid number. This is user
+input, so it could be anything. That’s why strconv.Atoi returns an error,
+and if this is non-nil, it means there was a problem converting the copies
+argument to a number.
+The next step, assuming the conversion succeeds, is to update the number
+of copies for the book with this ID, and we’ll imagine that we can call some
+SetCopies method on the catalog to do that:
+It’s possible that the ID the user provided doesn’t appear in the catalog, in
+which case we obviously can’t update it. It seems logical that SetCopies
+would return an error if this happens, so again we need to check and report
+this error value.
+A Sync method
+If we’ve reached this point in the program, then we’ve successfully updated
+the copies information for the specified information. But the catalog
+copies, err := strconv.Atoi(os.Args[2])
+err := catalog.SetCopies(ID, copies) 
+if err != nil { 
+    fmt.Printf("updating book: %v\n", err) 
+    return 
+}information stored in memory is now out of sync with that stored in the disk
+file. If the program exited now, our changes wouldn’t persist.
+We need a way for the program to tell the updated catalog to sync itself
+with the file, and giving Catalog a method named Sync to do this seems
+reasonable, doesn’t it?
+Writing the catalog data to disk could fail, just as reading it could fail, so it
+makes sense that Sync also returns an error for us to check.
+Finally, if we get past this point, it means we’ve successfully updated the
+book information and saved it to disk, so let’s report that success to the user
+before exiting:
+So, ignoring all the extraneous paperwork for the moment, and boiling this
+code down to its essentials, what we have is something like this:
+In other words, get the catalog, make the required change, and save the
+catalog back to disk.
+An alternative solution
+err := catalog.Sync("testdata/catalog") 
+if err != nil { 
+    fmt.Printf("writing catalog: %v\n", err) 
+    return 
+}
+fmt.Printf("Updated book %v to %d copies\n", ID, copies)
+catalog := books.OpenCatalog(...) 
+catalog.SetCopies(ID, copies) 
+catalog.Sync(...)It seems like this could work, but before we move on, let’s look at another
+way we could have structured this operation. Something like this:
+Right? I mean, we already have methods that retrieve an existing book from
+the catalog (GetBook), set its copies information (SetCopies), and store the
+modified book back in the catalog (we called it AddBook previously, but we
+could have as easily called it Update).
+What’s wrong with this approach? You might like to think about it a bit
+yourself before reading on (and recall the concerns we had about concurrent
+access to the catalog by parallel tests in a previous chapter).
+There’s nothing wrong with this code as it stands, but it’s worth asking what
+happens if someone else accesses the catalog concurrently with this
+program, for example a user at a different terminal in the bookstore.
+Winning the change race
+Specifically, imagine the following sequence of events:
+1. Amina retrieves book abc’s information by calling GetBook.
+2. Bhavana also retrieves book abc from the catalog.
+3. Amina modifies the book’s copies information and saves it back to the
+catalog with the ID abc.
+4. Bhavana modifies the book’s title information and saves it back to the
+catalog with the ID abc.
+Now, what happens to Amina’s change? It gets lost, because Bhavana
+overwrites all the information for abc with the Book struct she retrieved at
+step 2, including the copies information.
+catalog := books.OpenCatalog(...) 
+book := catalog.GetBook(ID) 
+book.SetCopies(copies) 
+catalog.Update(book) 
+catalog.Sync(...)It’s a data race, like we saw in the chapter on maps where parallel tests
+started flaking because they were concurrently modifying the catalog. In
+this case, whoever saves their changes last “wins” the race, in the sense that
+all other users’ changes are lost.
+The fundamental problem here is that we can hand out copies of the same 
+Book struct to more than one user at a time, and they can make independent
+changes, which then race to make it back into the catalog. As long as this is
+possible, we can’t guarantee that data from concurrent changes won’t be
+lost.
+This seems unsatisfactory, so what can we do to prevent it? Well, we can’t
+allow more than one mutable reference to a book to exist at once. That is,
+we can’t let users get a modifiable copy of a book’s information, hang on to
+it for as long as they like and make all sorts of changes, and then use that
+data to overwrite whatever’s currently stored in the catalog for that book.
+In some programming languages, such as Rust, this safety property is
+enforced by the language itself. That is, if you try to write a Rust program
+that creates more than one mutable reference to the same data at a time, it
+won’t compile. That fundamentally isn’t a safe thing to do, so Rust won’t
+let us do it.
+Go doesn’t have this useful feature, sadly, so if we want to avoid data races
+in our programs, we’ll have to prevent them ourselves.
+Making catalog changes atomic
+To be clear, the problem is not that users can concurrently modify book
+information in the catalog, in principle. The problem is that there’s a section
+of code in such a program where it’s not safe for anyone else to make a
+change to the same book, and we have no way of preventing them from
+doing so.
+At least, not if we provide a method like UpdateBook. Let’s take that away,
+and require that any change to a book’s information be made atomically—
+that is, in a single step, so that we don’t have to hand out mutable
+references.So, for example, we could provide a SetCopies method on the catalog,
+instead of an individual book. The potential for a data race could still exist
+inside that method, if it’s called concurrently, but we can solve that problem
+later. If we allow users to Update the catalog willy-nilly, though, we can
+never guarantee to avoid races.
+That brings us back to the original version of the copies program we saw,
+and here it is again in brief:
+This particular set of methods and behaviours for Catalog gives users the
+ability to do what they need to do, but in a concurrency-safe way.
+In the jargon, this is called the catalog’s API (Application Programming
+Interface), meaning the set of functions and methods that an application
+program such as copies would use to manipulate the information in the
+catalog. Designing good APIs is a big part of building good software, and
+probably one of the hardest.
+The best way I know to figure out what the API of some abstraction such as
+the catalog should be is to do what we’ve done here: write the code that
+calls the API first. We know what we want to do, so we imagine the
+appropriate methods and functions that would achieve it.
+Once we have code that reads clearly and straightforwardly, all we need to
+do is go ahead and implement the required methods. Let’s do that in the
+next chapter.
+Here’s what we know so far
+In this chapter you’ve learned about a couple of useful standard library
+features: reading files with os.Open, and decoding JSON data with 
+json.NewDecoder, using the Decode method to turn it into Go values. You
+catalog := books.OpenCatalog(...) 
+catalog.SetCopies(ID, copies) 
+catalog.Sync(...)also know how to use defer to make sure resources such as file handles are
+released when we’re done with them.
+You’ve also had a little more practice in abstraction design, evolving the
+catalog API to allow users to safely change the data, and to store a
+persistent copy of it on disk instead of temporarily in memory.
+In the next chapter, we’ll see how to encode Go values into JSON data, and
+we’ll finish the refactoring of the catalog API to support the copies
+program.

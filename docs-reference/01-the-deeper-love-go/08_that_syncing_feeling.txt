@@ -1,0 +1,720 @@
+8. That syncing feeling
+Concurrently reading and changing data can be dangerous, as we saw in the
+previous chapter, and the most dangerous thing about it is that it seems
+perfectly safe, until it isn’t.
+Even if your Go program is not itself concurrent, when you write and
+publish a Go package, someone might use it concurrently. We always have
+to take data races into account and design our API in such a way that it can
+be used safely without users having to take any special precautions.
+With this in mind, we now have a few changes to make to the books
+package to bring it up to date with the latest version of our catalog API.
+First, let’s implement the Sync method, so that we can save any changes we
+make to the catalog data.
+Writing catalog data to disk
+We’ve already written OpenCatalog, which reads JSON data from a disk file
+and decodes it to produce a catalog. But as soon as we make any changes to
+that catalog (for example, by updating the copies information for a book), it
+becomes out of sync with the corresponding file on disk.Sync’s job, then, is to fix that, by putting the two versions of the catalog
+back in sync: whatever data is in memory should replace what’s on disk. As
+usual, we’ll begin with a test.
+Testing Sync
+Over to you for another coding challenge, then.
+GOAL: Write a test for the Sync method.
+HINT: Use the existing test for OpenCatalog as a starting point. That test
+reads a prepared catalog file and checks the result against a list of expected
+books.
+The behaviour we want from Sync is that when we call it on a catalog, a
+disk file is created containing exactly the data that’s in the catalog. So, how
+can the test verify this? Well, one way would be to read the file with 
+OpenCatalog, wouldn’t it?
+Remember, you don’t need to implement Sync yet—we’ll come to that.
+Right now, all we need is a failing test that calls Sync on a catalog and then 
+OpenCatalog on the resulting file.
+SOLUTION: Here’s one possible first draft:
+func TestSyncWritesCatalogDataToFile(t *testing.T) { 
+    t.Parallel() 
+    catalog := getTestCatalog() 
+    err := catalog.Sync("testdata/catalog.new")
+    if err != nil { 
+        t.Fatal(err) 
+    } 
+    newCatalog, err := books.OpenCatalog("testdata/catalog.new") 
+    if err != nil { We’ve seen most of this code before in other tests, but here’s the important
+part:
+        t.Fatal(err) 
+    } 
+    want := []books.Book{ 
+        { 
+            Title:  "In the Company of Cheerful Ladies", 
+            Author: "Alexander McCall Smith", 
+            Copies: 1, 
+            ID:     "abc", 
+        }, 
+        { 
+            Title:  "White Heat", 
+            Author: "Dominic Sandbrook", 
+            Copies: 2, 
+            ID:     "xyz", 
+        }, 
+    } 
+    got := newCatalog.GetAllBooks() 
+    slices.SortFunc(got, func(a, b books.Book) int { 
+        return cmp.Compare(a.Author, b.Author) 
+    }) 
+    if !slices.Equal(want, got) { 
+        t.Fatalf("want %#v, got %#v", want, got)
+    } 
+}
+catalog := getTestCatalog() 
+err := catalog.Sync("testdata/catalog.new") 
+if err != nil { 
+    t.Fatal(err) Breaking this down, the first thing we do is create the test catalog using 
+getTestCatalog. We then call Sync to write this data to a new file.
+Assuming this succeeds, we then use OpenCatalog to read the same file we
+just created, and compare the results with the original catalog. If they’re not
+the same, or if there’s an error reading the new catalog, the test fails.
+A test helper
+This seems reasonable, but it’s a little hard to see what’s going on in this
+test because so much of the code is taken up by merely checking that the
+new catalog contains the expected data.
+We’ve written this exact code in three different tests now, and that’s
+probably a signal that we should refactor it out to a helper function, like we
+did with getTestCatalog.
+Suppose we called it assertTestBooks, for example. Then we could write
+something like:
+Much clearer! What we’re saying is that, given some slice bookList, we
+want to fail the test if it differs from the books in the test catalog (regardless
+} 
+newCatalog, err := books.OpenCatalog("testdata/catalog.new") 
+if err != nil { 
+    t.Fatal(err) 
+}
+newCatalog, err := books.OpenCatalog("testdata/catalog.new") 
+if err != nil { 
+    t.Fatal(err) 
+} 
+bookList := newCatalog.GetAllBooks() 
+assertTestBooks(t, bookList)of ordering).
+So, how do we write assertTestBooks? It needs to take the []Book slice as a
+parameter, so that it can compare its contents to that of the catalog.
+But it’d be nice if it also took the magic t that represents this running
+instance of the test. That way, the helper function can fail the test when it
+needs to. If it didn’t take the t, it would instead have to return some error to
+be checked; that’s paperwork we can do without.
+Something like this could work:
+func assertTestBooks(t *testing.T, got []books.Book) { 
+    t.Helper() 
+    want := []books.Book{ 
+        { 
+            Title:  "In the Company of Cheerful Ladies", 
+            Author: "Alexander McCall Smith", 
+            Copies: 1, 
+            ID:     "abc", 
+        }, 
+        { 
+            Title:  "White Heat", 
+            Author: "Dominic Sandbrook", 
+            Copies: 2, 
+            ID:     "xyz", 
+        }, 
+    } 
+    slices.SortFunc(got, func(a, b books.Book) int { 
+        return cmp.Compare(a.Author, b.Author) 
+    }) 
+    if !slices.Equal(want, got) { 
+        t.Fatalf("want %#v, got %#v", want, got)(Listing books/17)
+It’s the same code we had already in our existing tests: sorting the slice and
+comparing it with what it should be. All we’re doing here is moving that
+comparison code into an abstraction, making the tests that use it cleaner and
+clearer.
+The t.Helper method
+There’s one new thing here, though:
+Calling Helper tells Go that this function isn’t a test itself; rather, it’s a test
+helper. This doesn’t affect the logic of the test at all, but it does affect what
+happens when the test fails.
+As you’ve seen with other tests, when we call t.Error or t.Fatal to fail the
+test, the failure is reported like this:
+--- FAIL: TestSyncWritesCatalogDataToFile (0.00s) 
+    books_test.go:82: want ...
+The reported line number (82 in this example) refers to the line where 
+t.Fatal was called. But if we pass the t to another function and call Fatal
+on it there, the reported line number would be misleading:
+--- FAIL: TestSyncWritesCatalogDataToFile (0.00s) 
+    books_test.go:146: want ...
+The line number here is inside the assertTestBooks function, which isn’t all
+that helpful: that’ll always be the case with any test that calls this function.
+    } 
+}
+t.Helper()What we actually want to know when a test fails is at which line in the test
+it occurred. That’s the difference that t.Helper() makes: when t.Error or 
+t.Fatal is called in the helper, Go will report the failure at the relevant line
+in the calling test.
+Go has one of the best built-in testing frameworks of any major language,
+and I think that’s a big reason for its popularity. There isn’t space to go into
+more than a few of the most commonly-used features of the testing
+package here, but don’t worry: I’ve dedicated a whole other book to it.
+The Power of Go: Tests covers not only the built-in features, but lots of
+useful tricks and techniques for testing Go programs, including test scripts,
+fuzzing, mutation testing, table tests, databases, mocks, and testing error
+handling. I think you’ll enjoy it.
+Updating the tests
+Let’s go ahead and refactor the other tests to use the nice new 
+assertTestBooks helper, then, starting with the test for GetAllBooks:
+(Listing books/17)
+Next:
+func TestGetAllBooks_ReturnsAllBooks(t *testing.T) { 
+    t.Parallel() 
+    catalog := getTestCatalog() 
+    bookList := catalog.GetAllBooks() 
+    assertTestBooks(t, bookList) 
+}
+func TestOpenCatalog_LoadsCatalogDataFromFile(t *testing.T) { 
+    t.Parallel() 
+    catalog, err := books.OpenCatalog("testdata/catalog") 
+    if err != nil { Much tidier, and it’s easier now to focus on what these tests are actually
+testing, without all the boilerplate code getting in the way.
+A round-trip test for Sync / OpenCatalog
+There’s some duplication between the OpenCatalog and Sync tests. Both of
+them read a catalog file from disk and check that it contains the test catalog
+data. The only difference is that in the Sync test, we write the file to disk
+first, whereas in the OpenCatalog test we use a static file that we prepared
+earlier.
+Could we combine the two tests? More to the point, should we?
+        t.Fatal(err) 
+    } 
+    bookList := catalog.GetAllBooks() 
+    assertTestBooks(t, bookList) 
+} 
+ 
+func TestSyncWritesCatalogDataToFile(t *testing.T) { 
+    t.Parallel() 
+    catalog := getTestCatalog() 
+    err := catalog.Sync("testdata/catalog.new")
+    if err != nil { 
+        t.Fatal(err) 
+    } 
+    newCatalog, err := books.OpenCatalog("testdata/catalog.new") 
+    if err != nil { 
+        t.Fatal(err) 
+    } 
+    bookList := newCatalog.GetAllBooks() 
+    assertTestBooks(t, bookList) 
+}One way to describe the behaviour of OpenCatalog is that it reads back
+whatever data was written by Sync, and conversely the job of Sync is to
+write data in a format that OpenCatalog can read. In effect, each function
+acts as a test for the other.
+Let’s make that explicit, then, by deleting the superflous OpenCatalog test,
+and rename our Sync test to emphasise that it covers both functions at once:
+We don’t need that prepared JSON file anymore, because we’re generating
+our own on the fly. We’re saying that, ultimately, it doesn’t matter exactly
+what bytes get written to disk to represent the catalog. The important thing
+is that, whatever they are, we can read them back to get the same catalog.
+You might prefer to have a separate test for each function, and that’s okay.
+Indeed, it’s often a good idea. When it does matter exactly what bytes are
+produced by a method like Sync, for example, or consumed by a function
+like OpenCatalog, then it would be sensible to test the bytes. In this case, we
+don’t need to, because the disk format we use to store the catalog is merely
+an implementation detail, not something that affects users.
+func TestOpenCatalog_ReadsSameDataWrittenBySync(t *testing.T) { 
+    t.Parallel() 
+    catalog := getTestCatalog() 
+    err := catalog.Sync("testdata/catalog.new")
+    if err != nil { 
+        t.Fatal(err) 
+    } 
+    newCatalog, err := books.OpenCatalog("testdata/catalog.new") 
+    if err != nil { 
+        t.Fatal(err) 
+    } 
+    bookList := newCatalog.GetAllBooks() 
+    assertTestBooks(t, bookList) 
+}A potential “does nothing” bug
+There’s one slight annoyance about this test: it creates a file on disk that
+isn’t part of the source code repository. When we’re working on this
+project, we have to be careful not to inadvertently commit this catalog.new
+file, because it’s not supposed to be there.
+In fact, there’s another potential problem with this, and it’s a more serious
+one. Suppose, for the sake of argument, that after successfully running this
+test a few times and creating this catalog file, we then accidentally
+introduce a bug into Sync that causes it to do nothing whatsoever.
+Would the test detect this new bug? Unfortunately, it wouldn’t. As long as a
+file containing the correct data is still hanging around from a previous run,
+the test will always pass, regardless of whether Sync does anything or not.
+We hope we won’t write a bug like that, but hope isn’t a strategy. Instead,
+we’d prefer to have a more rigorous test that could detect such a problem.
+How?
+As often happens in software engineering, there’s a complicated answer and
+a simple answer. The complicated answer might be to do something like
+this:
+1. Check that the catalog file doesn’t already exist (if it does, fail)
+2. Call Sync to write the catalog file
+3. Call OpenCatalog to read the catalog file and check the results
+4. Delete the catalog file
+This procedure would detect the “Sync does nothing” bug, because it
+ensures that data files from previous runs aren’t present before calling Sync.
+It’s a little fiddly, though, and makes the test logic more complicated.
+The more complicated the test, the more likely it is to contain bugs itself,
+and that’s the last thing we want. If you need to write tests for your tests,
+then something has gone wrong.
+A career-limiting mistakeAlso, deliberately erasing the catalog file is inherently a risky thing to do.
+We can imagine introducing a bug in the test that would accidentally cause
+it to delete some real catalog file instead of the test artefact.
+For example, if the location of the test catalog file were controlled by an
+environment variable, someone could accidentally run the tests in a
+production environment instead of test, thus deleting all the real data (it
+happens).
+Needless to say, that unlucky someone could easily be us. Let’s adopt a way
+of writing tests that makes such a calamity impossible: a test should never
+delete any data that it didn’t create. And more broadly, our tests mustn’t
+cause any kind of problem if they’re run in a production environment,
+because one day they will be.
+So, how can we apply that principle in this test? In other words, how can we
+make sure that we only delete data that we created?
+Temporary directories with t.TempDir
+The ideal thing would be to write the catalog file to a new temporary
+directory, unique to this instance of the test, and for that directory to be
+automatically cleaned up once the test is complete.
+Using a temporary directory, we don’t need to check that the file doesn’t
+exist before the test starts, because it can’t. And we no longer need to delete
+the file afterwards, because when the containing directory gets deleted
+automatically, so will the file.
+Go has a built-in way to manage such directories in tests, using a method
+named t.TempDir:
+This satisfies our “never delete anything we didn’t create” rule. No one
+else’s data could be affected by this operation, because no one else knows 
+path := t.TempDir() + "/catalog" 
+err := catalog.Sync(path)path: we created it right here in the test.
+We can also now catch the kind of bug where Sync does nothing, because
+we can’t accidentally read a stale data file created by a previous run. There
+can be no such files, because their containing directories are automatically
+deleted when the test completes.
+By the way, did you notice that I sneaked in a new piece of syntax?
+Yes, Go’s + operator works with strings, and it does what you’d expect:
+joins the two strings into one. The resulting string here is the path to a
+catalog file in the test’s temporary directory.
+Here’s our refactored test:
+(Listing books/17)
+path := t.TempDir() + "/catalog"
+func TestOpenCatalog_ReadsSameDataWrittenBySync(t *testing.T) { 
+    t.Parallel() 
+    catalog := getTestCatalog() 
+    path := t.TempDir() + "/catalog" 
+    err := catalog.Sync(path) 
+    if err != nil { 
+        t.Fatal(err) 
+    } 
+    newCatalog, err := books.OpenCatalog(path) 
+    if err != nil { 
+        t.Fatal(err) 
+    } 
+    bookList := newCatalog.GetAllBooks() 
+    assertTestBooks(t, bookList) 
+}This looks neat, but it still doesn’t pass, because we haven’t implemented 
+Sync yet. Let’s fix that.
+Implementing Sync
+Here’s a version of Sync that passes the test:
+(Listing books/17)
+It looks a lot like OpenCatalog, and that shouldn’t surprise us, because as we
+saw earlier it does more or less the same thing that OpenCatalog does, but
+backwards (though not in high heels).
+Let’s break it down. First, where in OpenCatalog we used os.Open to open
+the file for reading, here we use os.Create to open it for writing:
+func (catalog Catalog) Sync(path string) error { 
+    file, err := os.Create(path) 
+    if err != nil { 
+        return err 
+    } 
+    defer file.Close() 
+    err = json.NewEncoder(file).Encode(catalog) 
+    if err != nil { 
+        return err 
+    } 
+    return nil 
+}
+file, err := os.Create(path) 
+if err != nil { 
+    return err 
+} 
+defer file.Close()As the name suggests, os.Create will create the file if it doesn’t already
+exist. If it does, though, whatever we write to file will replace its original
+contents, which makes sense given what we’re doing.
+Next, we again use the json package to turn the catalog data into JSON
+bytes and write them to file:
+Now that we have Sync working, we can write programs that make
+persistent catalog changes, such as the copies program we imagined in the
+previous chapter. What else do we still need to make this work?
+Enabling safe concurrent access to the catalog
+As we saw earlier, our new concurrency-safe API design requires a 
+SetCopies method on the catalog. We can’t let users grab a Book struct from
+the catalog, modify its data, and then write it back into the catalog later,
+because that could destroy any changes to the same book made by other
+users in the meantime.
+Instead, we’ll require all changes to be made by calling methods on the
+catalog directly. For example, if a user wants to change the number of
+copies of a book available, we’ll give them a SetCopies method to call on
+the Catalog, rather than on the Book struct representing the individual book
+data.
+That way, the book information can’t get out of date while the user is
+making changes to it. If SetCopies takes the book ID, it can both retrieve
+and update the book within the same method. We’ll still need a way to
+ensure that users can’t call SetCopies concurrently on the same book, but
+we’ll worry about that later. First let’s sort out the API.
+err = json.NewEncoder(file).Encode(catalog) 
+if err != nil { 
+    return err 
+}Testing a SetCopies method on the catalog
+Eventually, we’ll need methods to update all of a book’s properties, such as
+title, author, and so on. But let’s start with SetCopies, because we already
+implemented it on Book. Once we’ve got that working, we can add other
+methods later, along similar lines.
+Before we worry about how to implement SetCopies on the catalog, let’s
+first figure out how to test it. Over to you:
+GOAL: Write a test for the SetCopies method on Catalog. Take the existing
+test for SetCopies on Book as a starting point.
+HINT: As usual, first describe to yourself what you want the test to do, in
+plain language. You might say something like this: “Create a catalog, call
+its SetCopies method to change the copies information for some book, and
+then check that the information was changed in the right way.” Sounds
+reasonable to me.
+This translates fairly straightforwardly into Go code, and it’s not dissimilar
+to other tests we’ve already written, but there are several possible failure
+points to think about. In fact, I can see at least five potential ways this test
+could fail. Can you find them all?
+SOLUTION: Well, here’s my attempt at this:
+func TestSetCopies_OnCatalogModifiesSpecifiedBook(t *testing.T) { 
+    t.Parallel() 
+    catalog := getTestCatalog() 
+    book, ok := catalog.GetBook("abc") 
+    if !ok { 
+        t.Fatal("book not found") 
+    } 
+    if book.Copies != 1 { (Listing books/17)
+Five ways to fail
+The first way it could fail is that the book abc doesn’t exist in the test
+catalog! We don’t expect that to be the case, but good tests are all about
+coping with the unexpected.
+Next, although we expect the copies value for abc to be initially 1, it might
+not be. If that ever changed, it could screw up this test, so we check that.
+It’s what we do: we drink and we check things.
+We call SetCopies, which is the point of the test, but that could fail, too. For
+example, the book abc might suddenly not exist anymore, or we might pass
+some new Copies value that’s not allowed, such as a negative number.
+Again, we’ll be trying not to do these things, but it’s important to recognise
+that we or someone else might mistakenly do so in the future. Writing good
+        t.Fatalf("want 1 copy before change, got %d", 
+book.Copies) 
+    } 
+    err := catalog.SetCopies("abc", 2) 
+    if err != nil { 
+        t.Fatal(err) 
+    } 
+    book, ok = catalog.GetBook("abc") 
+    if !ok { 
+        t.Fatal("book not found") 
+    } 
+    if book.Copies != 2 { 
+        t.Fatalf("want 2 copies after change, got %d", 
+book.Copies) 
+    } 
+}tests, and good software in general, is as much about protecting ourselves
+from the future as from the present.
+We then retrieve the same book again, but that could fail, so there’s another 
+t.Fatal here. Finally, we check, not merely that its copies value has
+changed, but that it’s exactly 2.
+Note that we’re protected against the “SetCopies does nothing” bug because
+we checked at the start of the test that book.Copies was 1 beforehand, as
+well as 2 afterwards. In the event that we accidentally used a modified test
+catalog where the value was already 2, for example, we’ll catch that
+problem.
+Implementing SetCopies
+Great. We have a really solid-looking test, so we can go ahead and write the
+method itself.
+GOAL: Implement SetCopies so that it passes your test.
+HINT: We already have a SetCopies method on Book that validates its
+input, so let’s use that in our implementation of SetCopies for Catalog: we
+want validation, but there’s no need to write the same code twice. So, your
+implementation can get the book from the catalog using the supplied ID,
+update its copies information by calling SetCopies, and store the modified
+book back in the catalog.
+For now, don’t worry about what happens if someone else calls SetCopies
+concurrently. Let’s assume there’s some magic mechanism that prevents
+this (we’ll find out shortly what that might be).
+SOLUTION: Here’s my version:
+func (catalog Catalog) SetCopies(ID string, copies int) error { 
+    book, ok := catalog[ID] (Listing books/17)
+This is straightforward, and no different from a bunch of code we’ve
+already written: grab the book from the map, call its SetCopies method, and
+stash it back in the map.
+This passes the test, but the whole point of making SetCopies a method on
+the catalog was to deal with the issue of what happens if several people try
+to update the same book at once. And we haven’t dealt with it yet, though
+we’ve laid some of the foundations for the fix.
+Making AddBook concurrency-safe
+There’s one more thing to do before we tackle that problem. We’ve already
+seen that, in a concurrent environment, it can never be safe for someone to
+call AddBook on the catalog with a book that already exists. If they did, they
+might overwrite someone else’s changes (or someone else might overwrite
+theirs; either way, it’s not good).
+On the other hand, we still need a way to add new books to the catalog.
+That suggests we need to modify AddBook so that it won’t accept a book
+with an ID that already exists in the catalog. Over to you!
+GOAL: Write a new test for AddBook verifying that if you try to add a book
+with an ID that already exists in the catalog, it won’t be accepted. Modify 
+    if !ok { 
+        return fmt.Errorf("ID %q not found", ID)
+    } 
+    err := book.SetCopies(copies) 
+    if err != nil { 
+        return err 
+    } 
+    catalog[ID] = book 
+    return nil 
+}AddBook to pass the new test.
+HINT: You already know how to check if a given book is in the catalog,
+and that’s what we need to do here. You’ll need to change the signature of 
+AddBook because it can now fail, and it’s up to you to decide what to do in
+this case. Don’t forget to update the previous AddBook test to handle this
+new function signature, too.
+SOLUTION: Here’s my version of the test:
+(Listing books/17)
+It makes sense for AddBook to return an error now, doesn’t it? And we expect
+an error in this test, because we’re adding a book with an ID that already
+func TestAddBook_ReturnsErrorIfIDExists(t *testing.T) { 
+    t.Parallel() 
+    catalog := getTestCatalog() 
+    _, ok := catalog.GetBook("abc") 
+    if !ok { 
+        t.Fatal("book not present") 
+    } 
+    err := catalog.AddBook(books.Book{ 
+        ID:     "abc", 
+        Title:  "In the Company of Cheerful Ladies", 
+        Author: "Alexander McCall Smith", 
+        Copies: 1, 
+    }) 
+    if err == nil { 
+        t.Fatal("want error for duplicate ID, got nil") 
+    } 
+}exists in the test catalog (abc). The test fails if the error is nil.
+You might have opted to have AddBook return a bool instead, meaning “ok”,
+just as GetBook does. So, if the specified ID already exists in the catalog, 
+AddBook could return false, meaning “sorry, I couldn’t add that book
+because it’s already there”.
+That’s perfectly fine, but I chose to return an error instead because I can
+imagine other reasons why adding a book might not succeed. For example,
+we might add code in the future to validate all the book’s properties.
+Returning false just tells the user that the operation failed, but not why it
+failed: an error is more informative when there are multiple possibilities.
+Now that we’ve changed AddBook to return error, we should also update the
+existing test for AddBook to check that this error is nil when we add a new
+book to the catalog:
+func TestAddBook_AddsGivenBookToCatalog(t *testing.T) { 
+    t.Parallel() 
+    catalog := getTestCatalog() 
+    _, ok := catalog.GetBook("123") 
+    if ok { 
+        t.Fatal("book already present") 
+    } 
+    err := catalog.AddBook(books.Book{ 
+        ID:     "123", 
+        Title:  "The Prize of all the Oceans", 
+        Author: "Glyn Williams", 
+        Copies: 2, 
+    }) 
+    if err != nil { 
+        t.Fatal(err) 
+    } 
+    _, ok = catalog.GetBook("123") (Listing books/17)
+You might not think it’s necessary to check this error, because we know that
+in this test the AddBook operation should always succeed. That’s true, but if
+we changed the contents of the test catalog later, this call to AddBook could
+unexpectedly fail, and we’d want to know if that were the case.
+In general, if a function or method returns error (or ok), it should always be
+checked for success, even if there’s reason to believe that it can’t fail. Such
+assumptions can always prove false, and without an error check we could
+get very strange results in the real program. It’s even more important to be
+diligent about it in tests, since we rely on them for the correctness of all our
+other code.
+Here’s an implementation of AddBook that passes both tests, then:
+(Listing books/17)
+With that taken care of, we’re finally ready to sort out the problem of
+concurrent access to the catalog.
+    if !ok { 
+        t.Fatal("added book not found") 
+    } 
+}
+func (catalog Catalog) AddBook(book Book) error { 
+    _, ok := catalog[book.ID] 
+    if ok { 
+        return fmt.Errorf("ID %q already exists", book.ID) 
+    } 
+    catalog[book.ID] = book 
+    return nil 
+}A locking protocol for shared data
+First, let’s recap the problem briefly. We saw in the previous chapter that in
+a multi-user environment, a sequence of events like the following can
+happen:
+1. Amina retrieves book abc’s information by calling GetBook.
+2. Bhavana also retrieves book abc from the catalog.
+3. Amina modifies abc’s copies information and saves it back to the
+catalog.
+4. Bhavana modifies abc’s title information and saves it back to the
+catalog (destroying Amina’s changes).
+The problem occurs because between steps 1 and 3, there are two
+potentially different versions of the information about abc. Bhavana gets a
+copy of the one in the catalog, but this might differ from the version that
+Amina has.
+In other words, between steps 1 and 3, it’s not “safe” for anyone else to
+access the abc information in the catalog, because their changes could
+conflict with Amina’s. The net result of the conflict depends purely on the
+relative timing of the two sets of changes: that is, it’s a data race.
+The part of a program where such a data race can happen is called, in the
+jargon, a critical section. Both Amina and Bhavana’s programs have the
+same kind of critical section, between where they get the mutable reference
+to the book, and where they relinquish it.
+The simplest imaginable lock scheme
+Amina’s critical section is between steps 1-3, whereas Bhavana’s is between
+steps 2-4. A data race occurs when these two critical sections overlap in
+time. We need a way to prevent this.
+One very simple, and low-tech, idea would be to have Amina shout out
+“Hey, y’all, I’m about to modify book abc. Don’t do anything with abc until
+I say it’s okay!” And then later: “All good, I’m done with abc now”.An audio-based protocol like this would work, sort of. It would mean a lot
+of shouting, though, and that’s not really ideal: in the best bookstores, a
+quiet, studious atmosphere should prevail.
+A better scheme might be to have a big whiteboard in the middle of the
+store where everyone can see it. When Amina wants to make a change to
+book abc, she looks at the board to see if “abc” is already up there. If not,
+she writes it on the board. Then she makes her changes, and when she’s
+done, she rubs “abc” off the board so other users know it’s once again safe
+to modify abc.
+What if Bhavana wants to make a change to abc while Amina still has it
+“locked” like this? Well, she has to wait. Yes, it might be slightly annoying
+for other users to wait until Amina releases the lock, but it’s better than the
+catalog data getting corrupted: that would annoy everybody.
+And under normal circumstances, no one will need to lock a book for very
+long, so most books will spend most of the time unlocked. It’s unlikely that
+anyone will have to wait for the lock on a given book, and even if they do,
+the waiting time won’t be significant. We don’t expect much contention for
+these locks, in the jargon.
+It’s a workable scheme, with some caveats. For example, Amina has to be
+careful to remember to obtain the lock—that is, to check the board to see if
+the book’s ID is up there, and add it herself if not. If she forgets to do this
+before modifying the book information, there’ll be a data race.
+Also, she has to remember to release the lock afterwards: to rub the ID off
+the board. Otherwise, Bhavana will be stuck waiting for the lock forever,
+and more and more users will gradually get stuck waiting on the same lock
+over time, until eventually nobody can do anything at all (this is called a
+deadlock).
+Despite these potential problems, locking protocols like this are the simplest
+way to prevent data races in real-life concurrent environments. They don’t
+usually involve a big whiteboard, but the principle is the same.
+Mutexes in GoA lock system like the one we’ve described ensures mutually exclusive
+access to some data value, such as book abc. In other words, if I have access
+to it, that excludes you having access to it, and vice versa. In the jargon,
+then, the lock object that ensures this mutual exclusion is called a mutex.
+Go’s standard library includes one of these, as part of the sync package: it’s
+called sync.Mutex. Here’s an example of how it’s commonly used:
+We needn’t worry at all about how the mutex works internally. We can treat
+it as a black box with two methods: Lock and Unlock. We call Lock to get the
+lock, we do whatever we need to do with the protected data, and then we
+call Unlock to release the lock when we’re finished.
+What happens if someone else already has the lock when we call Lock? The
+answer is that Lock will wait until the lock becomes available, and then
+obtain it for us. Thus, the method call to Lock can take an arbitrary amount
+of time to return, and it might not return at all if the lock is never released.
+But if it does return, then we now have the lock.
+When someone holds the lock on the mutex, it blocks everybody else from
+accessing the protected data: that’s a mutex’s job, after all. We should only
+acquire the lock right before we need it, and release it as soon as possible
+afterwards. We should also avoid doing anything too time-consuming
+during this period, to avoid unnecessarily blocking the lock for other users.
+Both reads and writes need to be lock-aware
+It sounds like a mutex will help us to ensure safe concurrent access to the
+catalog, but before we do that, there’s one more point we need to talk about.
+When do we need to acquire the mutex lock? Is it only when we want to
+change the data, or is it also when we’re reading it?
+var mutex sync.Mutex 
+mutex.Lock() 
+// do something with data 
+mutex.Unlock()You might be tempted to say that it’s only when we’re changing the data.
+After all, if we’re just reading, we’re just reading! Why would we need to
+get a lock on something that we’re not changing?
+But that idea doesn’t work, because even though we’re just reading,
+someone else might concurrently be writing. While someone has the “write
+lock” on the data, it’s not safe for anyone else to read it. By “not safe” I
+mean that the data we’re looking at it might be in the middle of being
+changed, and we could see partial or invalid results because of this.
+In other words, a data race exists when two or more users (or different parts
+of the same program) are accessing the same piece of data concurrently, and
+at least one of those accesses is a write. To prevent a race, the data must be
+protected by a mutex, and all accesses must obtain the lock, even reads.
+Read locks and write locks
+You could imagine, then, that every piece of code accessing the data,
+including reads, would have to call Lock to acquire the mutex, waiting if
+necessary. But, since data is usually read more often than it’s written, most
+accesses are reads. That seems rather wasteful: it’s perfectly fine for lots of
+people to read the same data concurrently, as long as no one’s writing it.
+Why do we need an exclusive lock if we’re only reading?
+We don’t. We only need to prevent other people writing the data while we
+read it; we don’t care how many other people read it at the same time.
+Ideally, we’d be able to get two different kinds of lock on a mutex:
+an “exclusive” lock for writing, that can only be held by one person at
+a time
+a “shared” lock for reading, that can be held by many people
+simultaneously, as long as no one also has an exclusive lock
+For example, our find and list programs would only need to lock the
+catalog for reading, so they can hold this lock at the same time as other
+readers: it needn’t stop anyone else reading the catalog, only writing to it.
+It’s perfectly safe to have lots of different users all reading the catalog atonce. But a program that writes to the catalog, such as copies, would need
+to lock it for writing, thus preventing concurrent writes and reads.
+Slightly confusingly, a “lock for reading” is often referred to for short as a
+read lock. But a read lock doesn’t prevent reads, as one might easily
+assume: instead, it prevents writes! Sorry about that. Similarly, a “lock for
+writing” is often called a write lock, but it doesn’t prevent writes: it prevents
+reads.
+If you, like me, sometimes get these terms mixed up, think of it this way:
+when you want to read, you need a read lock, and when you want to write,
+you need a write lock.
+Go’s sync.RWMutex type
+In Go, the type that provides this two-tier locking is called sync.RWMutex.
+Write locking (exclusive locking) works exactly the same way as a regular
+mutex: we call Lock to lock it for writing, and Unlock to release it. But 
+RWMutex has an additional pair of methods for read locking: RLock / RUnlock.
+Using an RWMutex can perform much better than a Mutex in situations where
+reads are more common than writes. That’s because a read lock on an 
+RWMutex still allows concurrent reads, whereas a regular Mutex (or a write
+lock on an RWMutex) doesn’t.
+It sounds like RWMutex is the right choice for our catalog, since we envisage
+book information being read a lot more often than it’s changed.
+We could modify the Catalog type to hold an RWMutex as well as the map
+data, and we could add the required calls to Lock / Unlock or RLock / RUnlock
+to its methods. We can imagine getting this wrong, of course, just like
+anything else. How can we actually test that the catalog is safe for
+concurrent access?
+Well, one way would be to access it concurrently and see if anything blows
+up! If we try to do this without a mutex, we should get data races, and when
+we’ve correctly updated the code to be lock-aware, there should be no data
+races.Let’s try to write a test that both reads and writes the catalog concurrently,
+and this should enable us to flush out any data races that might be present.
+To do this, we’ll need to learn how to write concurrent programs in Go, and
+it turns out that’s a useful thing to be able to do in any case. Let’s tackle it in
+the next chapter.
+Here’s what we know so far
+In this chapter you’ve learned a few more useful tricks such as creating test
+helpers with t.Helper, and how to tidy up lots of similar tests by writing a
+helper such as assertTestBooks.
+You also now know how to use t.TempDir to create a per-test temporary
+directory that’s automatically cleaned up after the test, ensuring that we
+don’t accidentally step on someone else’s data. And you know how to
+concatenate strings using the + operator.
+Since a lot of Go code is about transforming data from one format to
+another (and usually back again), you’ve learned how to write a “round-
+trip” test to ensure that we get back what we started with. You know how to
+use the json package to produce JSON data, as well as consume it.
+You’ve also got a good grounding in the nature of data races, the use of
+mutex locks to prevent them, and important concepts in the theory of
+concurrency such as critical sections, lock contention, and deadlocks. You
+also understand the distinction between read locks and write locks, and
+you’ve been introduced to Go’s sync.Mutex and sync.RWMutex lock types. In
+the next chapter, we’ll see how to apply them to solve our book catalog
+problem.

@@ -1,0 +1,698 @@
+4. Slicing & dicing
+You’ve made a great start on our bookstore project so far, but there’s
+something we’re still missing. We can create a single value of the Book type
+and assign it to a variable, but a decent bookstore is going to need more
+than one book. We don’t yet have a way of dealing with collections of
+things (books, for example).
+Slices
+Just as we grouped a bunch of values of different types together into a
+struct, so that we can deal with them as a unit, we would like a way to
+group together a bunch of values of the same type. And in Go one kind of
+collection of values is called a slice.
+Slice variables and literals
+For example, a value representing a group of books would be a slice of Book
+(that’s how we say it). We can declare a slice variable like this:
+var books []BookThis says “Please create a variable named books of type []Book” (the square
+brackets indicate a slice).
+Once we’ve created such a variable, we can assign something to it. For
+example, we can assign a slice literal:
+The value on the right-hand side of the assignment is an empty []Book
+literal. If we wanted to include some actual books in it, we could do that by
+putting some Book literals (each with a trailing comma) inside the curly
+braces:
+Notice that we don’t need to write the type name Book before each struct
+literal inside the slice, because Go knows that only Book values can possibly
+be members of a slice of Book.
+Indexing slices
+books = []Book{}
+books = []Book{ 
+    { 
+        Title:  "Chasing the Thrill", 
+        Author: "Daniel Barbarisi", 
+    }, 
+    { 
+        Title:  "Birds and People", 
+        Author: "Mark Cocker", 
+    }, 
+    { 
+        Title:  "Most Secret War", 
+        Author: "R.V. Jones" 
+    } 
+}There’s something we can do with a slice that we couldn’t do with a basic
+or struct type: we can refer to one of its elements (the values contained in
+the slice) using its index (element number):
+The index is a non-negative integer that specifies the single element we’re
+interested in, where the index of the first element is 0, the second is 1, and
+so forth. (Think of the index as an offset from the start of the slice, if that
+helps.)
+The index expression books[0] gives us the Book value that’s the “zeroth”
+(that is, first) element in the slice. books[1] would be the next book, 
+books[2] the book after that, and so on.
+You might be wondering, then, what happens if we refer to the index of an
+element that doesn’t exist. For example, our books slice has three elements,
+whose index numbers are 0, 1, and 2 respectively. So what would we get if
+we asked for index number 3? That doesn’t correspond to any element in
+the slice, so it seems like it shouldn’t work. Let’s see what happens:
+Oh dear:
+panic: runtime error: index out of range [3] with length 3
+Well, we expected some error, and here it is. First, note that the program
+panics: we’ve encountered this before when we used the built-in function 
+panic to fail our home-made test for BookToString.
+This time, though, the program panics without us asking it to. This is
+because of a runtime error: although the program compiles successfully, it
+doesn’t work when we run it. And we already know the specific error in this
+var first Book 
+first = books[0]
+fmt.Println(books[3])case, because we caused it accidentally-on-purpose to see what would
+happen:
+index out of range [3] with length 3
+In other words, Go is telling us, you can’t ask for the fourth element of a
+slice with only three elements. That must be a mistake on the part of the
+programmer, so the only sensible thing for Go to do is stop the program and
+wait for us to correct it.
+Can we modify an individual slice element directly, using its index? It turns
+out we can:
+Indeed, we can use the same trick as with structs, to modify an individual
+field of an individual element:
+The len and append functions
+We really don’t want our programs to panic, as a rule, because that would
+mean they have a bug. In this case, the bug is that we recklessly indexed a
+slice without first checking that it has the required number of elements.
+Given a slice variable of a certain length, then, how can we tell which
+indexes are safe to use? That’s equivalent to knowing how many elements
+are in the slice, and there’s a built-in function len (short for “length”) for
+that:
+books[0] = Book{ 
+    Title:  "The Power Broker", 
+    Author: "Robert A. Caro", 
+}
+books[0].Title = "The Power Broker"This is telling us that the books slice has 2 elements. Any time we want to
+request a certain slice element by its index, then, it’s wise to check the
+length of the slice first using len, to make sure that the program won’t
+panic.
+There’s something else we can do with a slice that we couldn’t do with our
+other types: we can add a new element to it. We use the built-in append
+function for this:
+append takes a slice and an element value (or multiple values), and returns
+the modified slice, with the new value as its last element.
+A collection of books
+Let’s implement another feature for the bookstore: listing all books.
+Suppose we implement this with a function called GetAllBooks. How shall
+we write a test for it? What’s the behaviour we want?
+Well, we need some concept of “the collection of books in stock”. We can
+now make a guess that a slice of books will be a useful way to represent this
+collection. How do we spell that in Go? Its type will be []Book.
+There needs to be some []Book variable that we will use to store the books
+we have in stock: our catalog. Let’s call this variable catalog, then: simple
+fmt.Println(len(books)) 
+// Output: 
+// 2
+newBook := Book{ 
+    Title:  "Skyjack", 
+    Author: "Geoffrey Gray", 
+} 
+books = append(books, newBook)and obvious.
+We’re starting to put together the pieces we need: a slice variable catalog,
+and a function GetAllBooks. Whatever is contained in catalog, that’s what 
+GetAllBooks should return. Let’s start sketching out a test along those lines.
+Setting up the world
+We know we’ll need to call GetAllBooks in the test, and check its return
+value against some expectation, like we did with the test for BookToString.
+What’s our want? Well, we expect GetAllBooks to return a slice containing
+all the books in our catalog, so that’s our want. We can make the catalog as
+large or small as we want for this test, but it makes sense to keep it fairly
+small, to save typing. Let’s say it contains two books:
+Having set up this expected value, we can now call the function to get the
+actual value:
+want := []books.Book{ 
+    { 
+        Title:  "In the Company of Cheerful Ladies", 
+        Author: "Alexander McCall Smith", 
+        Copies: 1, 
+    }, 
+    { 
+        Title:  "White Heat", 
+        Author: "Dominic Sandbrook", 
+        Copies: 2, 
+    }, 
+}
+got := books.GetAllBooks()Finally, we’re ready to compare want with got to see if the function returned
+the correct result.
+Comparing slices
+There’s one problem. Usually in a test we compare want with got, to see if it
+was as expected. But we can’t actually compare two slices in Go directly,
+using the == or != operators:
+if want != got { 
+// invalid operation: want != got (slice can only be compared to 
+nil)
+Instead, we can use the standard library function slices.Equal to do this
+comparison for us. It takes two slices, and tells us if they’re the same. Don’t
+forget to import the slices package (most editors will do this automatically
+for you when you save the file; try it!)
+We want to fail the test if the two slices are not equal, so here’s how we
+write that:
+Notice the ! in front of slices.Equal; it’s pronounced “not”, in the same
+way that the != operator is pronounced “not equal to”. In general, any
+condition in an if statement can be inverted (flipped from true to false, or
+vice versa) by putting the ! operator in front of it like this.
+The updated test
+Here’s the complete test, ready to run:
+if !slices.Equal(want, got) {
+func TestGetAllBooks_ReturnsAllBooks(t *testing.T) { 
+    want := []books.Book{ 
+        { 
+            Title:  "In the Company of Cheerful Ladies", (Listing books/11)
+Here’s another new format placeholder: instead of %v, we’ve used %#v. This
+prints its corresponding data as a Go value—in this case, it’ll be a slice of 
+Book structs.
+It’s not compiling yet, because the GetAllBooks function doesn’t exist, but
+we know what to do about that. Just as we did with the test for 
+BookToString, we’ll write a dummy version of the function that does
+basically nothing, and we’ll use that to check that the test works.
+GOAL: Add the minimum code necessary to get this test to compile and
+fail.
+HINT: Well, we know we need a new function. The test makes it clear what
+the name of this function should be, and what parameters (if any) it takes.
+Because we’ll be comparing its result with our want variable, the function
+must return the same type as want: that is, []Book.
+            Author: "Alexander McCall Smith", 
+            Copies: 1, 
+        }, 
+        { 
+            Title:  "White Heat", 
+            Author: "Dominic Sandbrook", 
+            Copies: 2, 
+        }, 
+    } 
+    got := books.GetAllBooks() 
+    if !slices.Equal(want, got) { 
+        t.Fatalf("want %#v, got %#v", want, got)
+    } 
+}Can you see what to do?
+SOLUTION: Here’s the simplest incorrect version of GetAllBooks that I
+can think of:
+It returns an empty slice of Book, which definitely isn’t the same as want, so
+the test should fail, and indeed it does:
+--- FAIL: TestGetAllBooks (0.00s) 
+    books_test.go:24: want []books.Book{books.Book{Title:"In the 
+    Company of Cheerful Ladies", Author:"Alexander McCall Smith", 
+    Copies:1}, books.Book{Title:"White Heat", Author:"Dominic 
+    Sandbrook", Copies:2}}, got []books.Book{}
+We can see that the %#v format prints the want slice using Go syntax, and it
+contains what we expect. The got slice is empty, also as we expect, and that
+makes the test fail, so everything’s working as it should. Great. Let’s go
+ahead and make the test pass now.
+Implementing GetAllBooks
+GOAL: Make this test pass.
+HINT: We already have the “skeleton” version of GetAllBooks, which
+returns an empty slice. All you need to do is change it to return a slice with
+some elements. And you know what the elements should be: they’re the
+same as the ones in our want variable in the test. See what you can do.
+SOLUTION: Here’s one way to do it:
+func GetAllBooks() []Book { 
+    return []Book{} 
+}(Listing books/11)
+This passes, and we can also use gotestdox to remind us what our test
+asserts about the function’s behaviour:
+gotestdox
+✔  GetAllBooks returns all books (0.00s)
+Because of course it does! Another good choice of name, I think; there’s a
+lot to be said for obviousness-oriented programming.
+A global catalog variable
+If your solution is different, that’s okay. If it passes the test, that’s all we
+need for the moment. For example, you could have defined the catalog
+variable inside the GetAllBooks function, instead of outside. Or you could
+var catalog = []Book{ 
+    { 
+        Title:  "In the Company of Cheerful Ladies", 
+        Author: "Alexander McCall Smith", 
+        Copies: 1, 
+    }, 
+    { 
+        Title:  "White Heat", 
+        Author: "Dominic Sandbrook", 
+        Copies: 2, 
+    }, 
+} 
+ 
+func GetAllBooks() []Book { 
+    return catalog 
+}even have dispensed with the variable altogether, and returned the slice as a
+literal. That’s fine.
+I chose to do it this way because we know that in the real bookshop our
+catalog of books won’t always be a fixed value. It will vary over time, as
+we add and remove books from stock, so it makes sense to store the books
+in a variable.
+And because we’ll probably want to write functions to add and remove
+books, they’ll also need access to this variable. If we defined catalog in the
+body of the GetAllBooks function, then no other function would be able to
+see it: it would be local to that function.
+Up to now, all the variables we’ve defined have been local ones. Their
+scope—the part of the program that’s allowed to refer to them—has been
+confined to the function body they live in. But, by moving the var
+declaration outside the function, we can also create variables whose scope
+is the whole package. That makes them visible to any function within the
+package, and that’ll be useful to us later on.
+Variables like this are sometimes loosely called “global”, by contrast with
+“local”. But since Go programs can be made up of multiple packages, it’s
+not really correct to say that catalog is a global variable. To be accurate, we
+should call it “package-scoped”: it’s only visible within the package where
+it’s defined.
+Now that we’ve expanded the capabilities of our bookstore to stock more
+than one book, let’s try it out! Suppose we use our new GetAllBooks
+function to write a new version of the list program that users can run to
+see the complete catalog of books in stock.
+We could start with something like this in cmd/list/main.go:
+func main() { 
+    fmt.Println(books.GetAllBooks()) 
+}Let’s see what it looks like:
+go run ./cmd/list
+[{In the Company of Cheerful Ladies Alexander McCall Smith 1} 
+{White Heat Dominic Sandbrook 2}]
+Mmm. It’s correct, but the formatting could be nicer. This kind of output is
+fine for us programmers, when we’re testing the code, but real users would
+like something a bit more friendly. What can we do?
+Improving the output format
+Actually, we already have a nice function for formatting a book’s details as
+a user-readable string: it’s BookToString. Now we can start getting some
+wins from the abstraction-based approach, by plugging this component
+together with the “get all books” component.
+Here’s a first attempt:
+But this doesn’t compile:
+go run ./cmd/list
+cannot use books.GetAllBooks() (value of type []books.Book) as 
+books.Book value in argument to books.BookToString
+Okay, that sort of makes sense. We defined BookToString to take a single 
+Book as its argument. But what we’re passing here is what GetAllBooks
+returns, which is a slice of books, that is, []Book. That’s a different type to 
+Book, so Go won’t accept it.
+How can we fix this mismatch? We could change BookToString to accept a
+slice of books, and format them all. But that probably wouldn’t be the best
+func main() { 
+    fmt.Println(books.BookToString(books.GetAllBooks())) 
+}idea, because then if we wanted to print the details of only one book, we’d
+have the opposite problem!
+Instead, what we really want to do is take each book one at a time, use 
+BookToString to format its details, and print the result. If we repeat this
+process for every book in the catalog, it’ll produce the output we need.
+A program construct that repeats the same bit of code several times is called
+a loop, and in Go we use the for keyword for that. When we combine it
+with the range operator, we get a loop that executes once for each element
+of a slice. Perfect!
+(Listing books/11)
+There’s one thing that looks a bit puzzling about this for ... range
+construct. We can see that, each time we enter the loop, book is the next
+book in the slice. That makes sense: we’re executing some code “for each
+book”, if you like. But what’s this mysterious underscore (_)?
+The answer is that the range operator gives us two values, not one, for each
+slice element. The second, book, is the element itself, as you’d expect. But
+the first will be the index of that element: these go 0, 1, 2…, as we saw
+earlier in this chapter.
+As it happens, we don’t use the index numbers in this program, so we’ll
+ignore them, by putting _ in the place where a variable name would go (_ is
+called the blank identifier: it means “I don’t need this, thanks”).
+func main() { 
+    for _, book := range books.GetAllBooks() { 
+        fmt.Println(books.BookToString(book)) 
+    } 
+}
+for _, book := range...Let’s try out the updated program:
+go run ./cmd/list
+In the Company of Cheerful Ladies by Alexander McCall Smith 
+(copies: 1) 
+White Heat by Dominic Sandbrook (copies: 2)
+Very nice!
+Unique identifiers
+We’ve added some useful functionality for our prospective bookstore
+colleagues: they can run a program and print out the complete catalog of
+books in stock. This is great as far as it goes, but we can already see some
+limitations.
+Finding a specific book
+For example, suppose a customer asks if we have a certain book in stock.
+The program we have could answer that question, but the user would have
+to print out the whole catalog and then read through it, book by book, until
+they eventually find the book the customer wants. Or, if they can’t find it,
+they’ll have to conclude that it’s not in stock.
+That’s rather laborious and error-prone work, which is the sort of thing that
+computers are supposed to help us avoid. What we’d like here is the ability
+to find a specific book in the catalog, if it exists, and see the details.
+That sounds like a function we could write, doesn’t it? Let’s call it GetBook.
+We could call it, specifying the book we want, and it could return the
+corresponding Book struct. Then we could print it out, using BookToString,
+for example.
+So, how do we “specify” a book? The customer might know the title and
+the author, or only the title, or only the author. Or they might not know
+either of those things, and the task of finding what they want might be evenharder: “You know, the one with the boy wizard, not Harry Potter, the other
+one”.
+In a real bookstore, it would be useful to search the catalog by any property
+of the book, such as author or title, and maybe even do “fuzzy” searches,
+such as finding all books with “vampire” in the title.
+Let’s take things one step at a time, though, and start with a very simple
+search facility: we’ll assume each book has some kind of unique identifier,
+and when we pass that to GetBook, we’ll either find the corresponding book,
+or we’ll know that it’s not in the catalog.
+How do we uniquely identify a book, then? Not by its title, because there
+can be many books with the same title. Nor by its author, naturally. We need
+something that’s guaranteed to be different for each book. There is such a
+thing as an International Standard Book Number (ISBN), but not every
+book has one.
+We’re going to need to create our own unique identifier (ID) for each book.
+To be clear, it doesn’t matter what that value actually is for any given book,
+only that it’s unique within our catalog. If the book already has an ISBN,
+we could use that, or we could assign our own IDs to books that don’t have
+them.
+What type would make sense for the ID field, then? Well, int wouldn’t
+work, because an ISBN contains letters as well as numbers. In general, we
+can’t know in advance what format the ID might take. So the safest choice
+for this field is string, because a string can hold letters, numbers, or any
+other characters defined by Unicode.
+Designing GetBook to take a book ID
+Now we can start to see how to sketch out a test for GetBook. It would take a
+string parameter representing the book ID, which can be whatever we want
+for the purposes of the test (“abc”, for example). Assuming there is a book
+in our catalog with such an ID, which we’ll need to arrange, then the test
+can check that GetBook returns exactly that book.Over to you to have a go at this, then!
+GOAL: Write a test for GetBook along the suggested lines, making the
+necessary changes to the rest of the program to get it to compile, and the
+test to fail. Remember, you don’t need to implement the real version of 
+GetBook yet, only the test, and a stub version of GetBook that returns the
+wrong answer.
+HINT: You know how to write a test, how to add a new field to a struct
+type, and so on. See how far you can get before looking at the suggested
+solution.
+SOLUTION: Here’s what I came up with:
+There’s one extra new feature that I sneaked in: the t.Parallel(). This tells
+Go that it’s okay to run this test in parallel with others: that is, at the same
+time. If you have more than one CPU in your computer, which you almost
+certainly do, then Go can put them all to work running tests at the same
+time, which makes sense.
+func TestGetBook_FindsBookInCatalogByID(t *testing.T) { 
+    t.Parallel() 
+    want := books.Book{ 
+        ID:     "abc", 
+        Title:  "In the Company of Cheerful Ladies", 
+        Author: "Alexander McCall Smith", 
+        Copies: 1, 
+    } 
+    got := books.GetBook("abc") 
+    if want != got { 
+        t.Fatalf("want %#v, got %#v", want, got)
+    } 
+}We’ll add t.Parallel() to our other tests, too. There’s no reason not to run
+tests in parallel, and in general it’s a good idea: it saves time, and when you
+have a lot of tests, the saving can be quite significant.
+This test isn’t too complicated in itself. The name makes sense when seen
+through gotestdox:
+GetBook finds book in catalog by ID
+We assert that if the book “In the Company of Cheerful Ladies” has the
+arbitrary ID abc, then when we call GetBook with that ID, it should return
+the book we’re looking for.
+Adding the ID field to Book
+We’ve referenced a field ID on Book as though it existed, but it doesn’t yet.
+Let’s add it:
+(Listing books/12)
+The order of the fields doesn’t matter for our program, so you could put the 
+ID field first, last, or anywhere you like.
+We still have a compile error because no function GetBook exists, but you
+know how to deal with that. We can write a very simple stub version of 
+GetBook:
+type Book struct { 
+    Title  string 
+    Author string 
+    Copies int 
+    ID     string 
+}
+func GetBook(ID string) Book { 
+    return Book{} It doesn’t actually matter what we return for now, so long as it’s the wrong
+answer, and a completely empty Book struct will certainly be that. In fact, as
+you now know, variables always have default values in Go, so a Book where
+we don’t explicitly set any of the fields will nonetheless contain the default
+values for each of those fields.
+The program now compiles, and the test fails in the way we expect:
+--- FAIL: TestGetBook_FindsBookInCatalogByID (0.00s) 
+    books_test.go:40: want books.Book{Title:"In the Company of 
+    Cheerful Ladies", Author:"Alexander McCall Smith", Copies:1, 
+    ID:"abc"}, got books.Book{Title:"", Author:"", Copies:0, ID:""}
+Nice work! Now let’s see if we can make the test pass, by writing the real
+version of GetBook.
+Implementing GetBook
+This isn’t actually all that difficult, and it doesn’t require any knowledge
+that you don’t already have. What you might find challenging at first is
+figuring out what to do.
+In other words, if you had an algorithm—an English description of the steps
+the function needs to take—you could probably work out how to express
+that in Go code. But what’s our algorithm here?
+One trick I use in a situation like this is to ask myself, “What would I do
+manually?” That is to say, if I were looking for a particular book among a
+bunch of real, physical books, what would I do?
+I can’t rely on the books being in any particular order—that would be great,
+but we don’t have that luxury. Putting the books in order would be a long
+and laborious process.
+Instead, I’d just look at every book in turn, asking myself “Is this book’s ID
+the one I’m looking for?” When I find the one with the matching ID (or
+}don’t), then I’m done. It would be a bit tedious for a human, but computers
+are very fast, and they don’t mind repetitive tasks. As Richard Feynman
+said, “The inside of a computer is dumb as hell, but it goes like mad!”
+Let’s see if we can write this procedure in Go, then. First, can we figure out
+how to look at each book in the catalog in turn? Yes, we know how to do
+this already, using for ... range, as we did in Listing books/11:
+And we also know how to use an if statement to do something if some
+condition is true. Here, the condition is that the ID of this book is the one
+we’re looking for:
+If this is the book we want, in other words, then return it—we’re done! No
+need to keep on searching through the remaining books, since we’ve found
+what we were looking for.
+A first attempt at GetBook
+Here’s our first sketch:
+for _, book := range catalog {
+if book.ID == ID { 
+    return book 
+}
+func GetBook(ID string) Book { 
+    for _, book := range catalog { 
+        if book.ID == ID { 
+            return book 
+        } 
+    } 
+}But there’s a problem: this doesn’t compile. Go complains, at the end of the
+function:
+missing return
+That’s because the function signature declares that it always returns a Book.
+But, looking at this code, we can see that it might not!
+If we loop over all the books there are, and none of them match the
+requested ID… then what? We can’t just say “oh well”, and exit the
+function without a result.
+The “comma, ok” pattern
+The function must return something, because its signature promises that it
+will. And it has to be a Book:
+If we don’t find the requested book, though, what Book value should we
+return? There isn’t an obvious right answer.
+Returning multiple results
+We could use an empty Book struct, as we did in the stub version, but that’s
+annoying for users. Every time they called GetBook, they’d have no way of
+knowing whether the requested book was actually found.
+To find this out, they’d have to look at the ID of the returned book to see if
+it matches the ID they asked for. If it does, well and good, but if not, then it
+must be the empty string, meaning that an empty Book value was returned,
+meaning that the ID wasn’t found. That’s more paperwork than users should
+have to do.
+When we call this function, what we’d like is a simple yes-or-no indicator,
+telling us whether the book was found or not. That’s not impossible, but the
+func GetBook(ID string) Book {problem is that we already declared the function to return a result of type 
+Book, which isn’t a yes-or-no data type. What can we do?
+We can return two results from the function! This is a neat feature of Go
+which isn’t available in every other programming language, and it comes in
+handy for cases like this. And Go also has exactly the data type we need:
+it’s called bool, short for “Boolean”.
+Boolean values
+Not the most intuitive name, perhaps, but it’s named after the
+mathematician George Boole, who was one of the first to explore the idea
+of binary numbers (in effect, values that can be “yes” or “no”). As you can
+imagine, that’s a pretty fundamental concept in computing, so Boolean
+values are used a lot.
+It doesn’t actually matter what we choose to call the two possible values of
+a bool: think of them as “yes” or “no”, 0 or 1, “true” or “false”, and so on.
+The point is that they can only be one or the other.
+In Go the possible values of a bool are called true and false. As with the
+other data types we’ve met already, we can declare a variable of type bool
+and assign it one of the possible values:
+And we can also take bool parameters to functions, or have them return 
+bool results. That’s what we need here, in fact: a result value from GetBook
+that means “found” or “not found”.
+Let’s update GetBook to return a bool along with the Book, then:
+var bookFound bool 
+bookFound = true 
+bookFound = false
+func GetBook(ID string) (Book, bool) {Notice that now we have to put parentheses around the list of results, as we
+do with the list of parameters. If there were only one result, we could leave
+out the parentheses, but as soon as we have two or more results, the
+parentheses are required.
+This extra result will be a signal to callers: “Yes, I’ve found the book you
+wanted”, or ”Sorry, we don’t have that book in stock”, depending on what
+happens in the search. If we find a match for the requested ID, then it makes
+sense to return true along with the matching book:
+The key point is that now we know what to return at the end of the function,
+if we’ve completed the entire loop without finding the requested book. We
+can return an empty Book, because there’s no other Book value that makes
+sense, but we can also return false, meaning “not found”.
+Here’s the updated function:
+(Listing books/12)
+This makes it really easy for users to check whether GetBook found the book
+or not.
+if book.ID == ID { 
+    return book, true 
+}
+func GetBook(ID string) (Book, bool) { 
+    for _, book := range catalog { 
+        if book.ID == ID { 
+            return book, true 
+        } 
+    } 
+    return Book{}, false 
+}Testing the ok value
+Let’s update the test to check this second result from GetBook:
+Seems reasonable, doesn’t it? We still have an assignment statement, as
+before, but now because GetBook returns two values, we need two variables
+on the left hand side: we’ll call them got and ok.
+They’re in the same order as the results GetBook returns, naturally enough:
+first the book, then the bool value meaning “found or not found”. We could
+have called the second variable something like found, but it’s conventional
+in Go to call it ok.
+You can see why this is sometimes called the “comma, ok” pattern, because
+a lot of Go code looks something like this:
+Think of the ok value as indicating “Okay, I found what you wanted, and
+it’s in the other result”. Or, alternatively, “Sorry, I couldn’t find what you
+wanted, so don’t bother looking at the other result—it’ll be empty.”
+Which answer do we expect in the test? Well, that’s a good question. In this
+test, by definition we expect ok to be true, meaning that we did find the
+book whose ID is “abc”. That’s why we write:
+Remember how we used ! earlier to mean “not”, as in !slices.Equal? It’s
+the same thing here. if !ok, pronounced “if not ok”, means “if ok is equal
+got, ok := GetBook("abc") 
+if !ok { 
+    t.Fatal("book not found") 
+}
+_, ok := Get(something)
+if !ok {to false”. In other words, if the ID is not found, then the test should fail.
+Here’s what we have so far:
+(Listing books/12)
+This test checks one of the possible behaviours of GetBook. Namely, when
+we search for a book that is in the catalog, we should find it.
+Programmers often call this the “happy path”, meaning what’s supposed to
+happen if everything goes according to plan. But, since that isn’t always the
+case, we also need to account for the “sad path”.
+The sad path
+The other possible behaviour of GetBook is that when we search for a book
+that’s not in the catalog, we shouldn’t find anything. You might think that’s
+func TestGetBook_FindsBookInCatalogByID(t *testing.T) { 
+    t.Parallel() 
+    want := books.Book{ 
+        ID:     "abc", 
+        Title:  "In the Company of Cheerful Ladies", 
+        Author: "Alexander McCall Smith", 
+        Copies: 1, 
+    } 
+    got, ok := books.GetBook("abc") 
+    if !ok { 
+        t.Fatal("book not found") 
+    } 
+    if want != got { 
+        t.Fatalf("want %#v, got %#v", want, got)
+    } 
+}not worth testing, but it is.
+We can imagine, for example, accidentally writing a bug that makes 
+GetBook always return true for ok, no matter whether the book is found or
+not. That would make a user’s program behave incorrectly, so we need to be
+able to catch this kind of problem.
+Let’s also separately test that when the book is not found, ok is false:
+(Listing books/12)
+There’s no want this time, because we’re not expecting to find the book, so
+we don’t need to compare it with anything. Indeed, we don’t need the
+variable got either, so we use the blank identifier _ to ignore the first value
+returned by GetBook.
+The only thing we’re interested in for this test is the ok value. Since we
+expect it to be false for a nonexistent book, we fail the test if it’s true
+(that’s what if ok means).
+Adding IDs to the catalog
+We can now run these tests and see what happens. Well, the “book not
+found” test passes, which is encouraging. The “book found” test doesn’t,
+though, and the reason isn’t hard to figure out. We’re searching for a book
+with a specific ID, and the books in our catalog don’t actually have IDs yet.
+func TestGetBook_ReturnsFalseWhenBookNotFound(t *testing.T) { 
+    t.Parallel() 
+    _, ok := books.GetBook("nonexistent ID") 
+    if ok { 
+        t.Fatal("want false for nonexistent ID, got true") 
+    } 
+}Or rather, since struct fields always have a default value, every book’s ID
+field is the empty string. Let’s fix that:
+(Listing books/12)
+We’re saying it doesn’t matter what ID we assign to each book, as long as
+they’re all different (and correspond to the ones we expect in the tests).
+Fixing the tests
+That fixes the “book found” test, but now our previous test, for 
+GetAllBooks, is failing:
+--- FAIL: TestGetAllBooks_ReturnsAllBooks (0.00s) 
+    books_test.go:26: want []books.Book{books.Book{Title:"In the 
+    Company of Cheerful Ladies", Author:"Alexander McCall Smith", 
+    Copies:1, ID:""}, books.Book{Title:"White Heat", 
+    Author:"Dominic Sandbrook", Copies:2, ID:""}}, got 
+    []books.Book{books.Book{Title:"In the Company of Cheerful 
+    Ladies", Author:"Alexander McCall Smith", Copies:1, ID:"abc"}, 
+var catalog = []Book{ 
+    { 
+        Title:  "In the Company of Cheerful Ladies", 
+        Author: "Alexander McCall Smith", 
+        Copies: 1, 
+        ID:     "abc", 
+    }, 
+    { 
+        Title:  "White Heat", 
+        Author: "Dominic Sandbrook", 
+        Copies: 2, 
+        ID:     "xyz", 
+    }, 
+}    books.Book{Title:"White Heat", Author:"Dominic Sandbrook", 
+    Copies:2, ID:"xyz"}}
+Not to worry. This is the sort of thing we deal with all the time when
+making changes to programs. The changes are bound to break some tests,
+which is a good sign: it shows we’re testing the code thoroughly.
+And in this case the code for GetAllBooks is still perfectly correct; it’s the
+test that needs updating. Books now have IDs! Once we update the want
+value to allow for that, everything is fine:
+(Listing books/12)
+func TestGetAllBooks_ReturnsAllBooks(t *testing.T) { 
+    t.Parallel() 
+    want := []books.Book{ 
+        { 
+            Title:  "In the Company of Cheerful Ladies", 
+            Author: "Alexander McCall Smith", 
+            Copies: 1, 
+            ID:     "abc", 
+        }, 
+        { 
+            Title:  "White Heat", 
+            Author: "Dominic Sandbrook", 
+            Copies: 2, 
+            ID:     "xyz", 
+        }, 
+    } 
+    got := books.GetAllBooks() 
+    if !slices.Equal(want, got) { 
+        t.Fatalf("want %#v, got %#v", want, got)
+    } 
+}Great job! We can list all books and search by ID. Or rather, we have the
+facility to search by ID, but we don’t yet have a program that Happy Fun
+Books operatives could run to actually search for something. Let’s tackle
+that problem in the next chapter.
+Here’s what we know so far
+We’re really getting to grips now with data handling in Go. You’ve learned
+how to manage collections of values with slices, how to declare slice
+variables and write slice literals, how to read and write individual elements,
+how to append new elements, and how to get the length of a slice using the 
+len function.
+You’ve also learned how to process each element of a slice in turn using a 
+for ... range loop, and how to compare two slices with slices.Equal,
+which is very useful for tests. And you’ve learned about the bool type, and
+how to return it from a function to signal whether or not some result is
+present. Nice work!

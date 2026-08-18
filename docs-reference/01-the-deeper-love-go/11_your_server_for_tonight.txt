@@ -1,0 +1,683 @@
+11. Your server for tonight
+Thanks to you, Happy Fun Books is well on the way to becoming a thriving
+business. That means lots of customers, lots of branches, and lots of sales
+terminals in each branch. And, as we’ve seen, that also means concurrent
+access to the catalog data.
+Each terminal will need to be able to do things like query the catalog for a
+certain book, add a new book, or update the details for a book. And, since
+there can be only one definitive version of the catalog, that information will
+have to live and be stored on one central computer—our server—which
+also needs to be able to receive and process the queries from multiple
+clients.
+A client/server protocol
+So, how can we make this work? You’ve probably heard of a networking
+standard called TCP/IP (Transmission Control Protocol / Internet Protocol);
+it’s the basis of the internet. The name makes it sound complicated, but it’s
+quite straightforward in principle.Low-level: TCP/IP
+We all understand the phone system, for example. When you want to talk to
+someone, you place a call to their number, and if it succeeds, you now have
+a two-way connection, and you can chat to your heart’s content. It’s just the
+same with TCP/IP: you dial the computer you want to talk to, using a
+unique number called its address. If the other party answers, then you have
+a connection, and it lasts until one of you decides to hang up.
+TCP/IP is a relatively low-level protocol: all it does is set up a two-way
+connection over which you can send arbitrary data back and forth, as bytes.
+It doesn’t assign any particular structure or meaning to those bytes, so you
+can have any kind of conversation you want, just like with a phone call. As
+long as both ends speak the same language, they can understand each other.
+For our bookstore, we need to support only a fairly restricted kind of
+conversation: one where the terminal sends a request (“tell me about book 
+abc”) and the server sends a response (“here are the details of abc”).
+High-level: HTTP
+Fortunately, there’s already a well-established protocol for doing exactly
+this sort of thing over TCP/IP connections, called HTTP (HyperText
+Transfer Protocol). Just as TCP/IP defines the internet, HTTP defines what
+we call the World-Wide Web, or just “the web” for short—and it’s also now
+used for many other things, as we’ll see.
+Here’s what a typical HTTP request might look like, if you were to spy on
+the bytes as they whizzed past:
+GET /hello HTTP/1.1 
+Host: example.com 
+User-Agent: curl/8.6.0 
+Accept: */*
+HTTP requestsAn HTTP request is the standard way for a client to ask a server for a
+certain resource. This one starts with the word GET:
+GET /hello HTTP/1.1
+It’s asking the server “Please can I GET the following?”. Then it identifies
+the specific resource it wants: /hello. This is a slash-separated path, very
+similar to the way we address specific disk files using a path. Officially, it’s
+called a Uniform Resource Identifier (URI).
+The GET line ends with HTTP/1.1, which means “I’m speaking HTTP
+protocol version 1.1, how about you?” Including the version number is
+important, because it means the protocol can be changed over time. A
+server can tell from the client’s HTTP version what features it supports, and
+vice versa.
+Then come some headers: a series of key-value pairs containing metadata
+about the request, one per line, like this:
+Host: example.com
+Here, the header name is Host, and the value is example.com. The Host
+header tells the server which hostname—which server name—the client
+thinks it’s talking to. You might wonder why this is necessary, since the
+client is already connected to the host. The answer is that a single server can
+serve multiple websites, distinguished by their different hostnames. The 
+Host header tells the server which one the client is interested in.
+The request also identifies the specific program, or user agent that’s
+sending it:
+User-Agent: curl/8.6.0
+In this case, it’s the curl command-line tool. And the Accept header sets out
+what kinds of resources the client is interested in:
+Accept: */*
+Here, */* means “everything; no restrictions”.We don’t need to worry about any of these headers for our purposes, as we
+won’t be using them, but it’s helpful to know what they mean.
+HTTP responses
+Here’s what a typical response might look like:
+HTTP/1.1 200 OK 
+Content-Type: text/html; charset=UTF-8 
+Date: Fri, 21 Jun 2025 14:18:33 GMT 
+Last-Modified: Thu, 17 Oct 2024 07:18:26 GMT
+Content-Length: 1234 
+ 
+<!doctype html> 
+<html><head><title>Hello, world</title></head> 
+...
+The server’s response begins by saying what protocol version it’s using: 
+HTTP/1.1—“Yes, I’m speaking HTTP version 1.1 too, nice to meet you.”
+This first line also includes a status code indicating, essentially, whether the
+request succeeded or failed:
+200 OK
+It’s the number that matters here, as far as HTTP clients are concerned; the
+text that follows is for the benefit of any humans who might be reading.
+Another possible status code, for example, might be 404 Not Found, if the
+requested resource doesn’t exist.
+The numbers are arbitrary, and there are lots of different status codes, but in
+general a 2xx code means the request succeeded, 4xx means there was
+something wrong with the request, and 5xx means there was something
+wrong on the server’s end.
+These codes cover a wide range of possible outcomes, including 418 I'm a 
+teapot, which exists primarily for comedy purposes. Engineering can be a
+dry business, and it’s important to keep your sense of humour.
+200 OK, as in this example, means “Sure, that’s no trouble: please find the
+requested resource attached”.Then there are some headers, conveying metadata about the resource.
+These include things like its content type (what kind of data it represents,
+and the specific character encoding used), the time it was retrieved, the time
+it was last modified, and how many bytes long it is:
+Content-Type: text/html; charset=UTF-8 
+Date: Fri, 21 Jun 2025 14:18:33 GMT 
+Last-Modified: Thu, 17 Oct 2024 07:18:26 GMT
+Content-Length: 1234
+The resource data itself follows. In this case, it’s a document beginning:
+<!doctype html> 
+<html><head><title>Hello, world</title></head> 
+...
+This happens to be HTML, the markup language used for hypertext
+documents on the web, but the details of that don’t concern us for now.
+We’re just interested in how to use HTTP to request or retrieve any
+resource, whether it’s an HTML document or something else.
+An abstract request/response protocol
+HTTP itself doesn’t care what the resource is, either. As far as the protocol
+is concerned, it’s just a bunch of bytes. The Content-Type header gives the
+client a hint about how to interpret those bytes: as text, for example.
+The job of HTTP is to provide a standard format for the request / response
+exchange between client and server, where resources are identified by a
+slash-separated path, and consist of arbitrary data.
+I expect you’ve used one of the most popular kinds of HTTP clients: a web
+browser, which you can use to visit such interesting sites as 
+bitfieldconsulting.com. The resources on these sites are served by a
+specific kind of HTTP server called a web server, logically enough.
+But we can also write HTTP client and server programs of our own. Rather
+than serving HTML documents, graphics, or videos to be displayed in a
+browser, we can serve, and consume, any kind of data we want. Forexample, we could use HTTP to request and respond with book information
+from the bookstore catalog.
+A simple HTTP server in Go
+By now you won’t be surprised to hear that Go provides excellent support
+for HTTP as part of the standard library, in the net/http package. In fact,
+we can write a simple HTTP server program with very little code indeed.
+Let’s do just that.
+http.ListenAndServe
+Here’s our first draft. I’m going to put it in a subfolder named cmd/server,
+to distinguish it from the various other commands we’ve written so far.
+Here’s the main.go file:
+(Listing hello/7)
+package main
+ 
+import ( 
+    "fmt" 
+    "net/http" 
+) 
+ 
+func main() { 
+    http.ListenAndServe(":3000", http.HandlerFunc(hello)) 
+} 
+ 
+func hello(w http.ResponseWriter, r *http.Request) { 
+    fmt.Fprintln(w, "Hello, world") 
+}It’s a relatively short program, but it does a lot. First, we import the 
+net/http package. Then, in the main function, we start an HTTP server
+with:
+ListenAndServe, as the name implies, listens for connections (in the same
+way that you might listen for the phone to ring). When a connection is
+made, and the connecting client sends an HTTP request, then the server
+serves it: that is, it responds with the requested resource (or an error, if
+appropriate). We’ll see how that works in a minute.
+Addresses, hosts, and port numbers
+First, though, we have to tell the server its address (its phone number, if you
+like), so that it knows where to listen for incoming connections. This is the
+first argument to ListenAndServe:
+:3000
+TCP/IP addresses usually consist of two parts: the host address and the port
+number, separated by a colon:
+HOST:PORT
+The host address identifies the particular computer (like a phone number).
+In order to support more than one connection at a time, it also includes a
+port number (like an office extension number, perhaps).
+In our example, we omitted the host address part altogether, which is
+allowed when listening for connections: by default, we’ll just listen on
+whatever our address happens to be. We did, however, give a specific port
+number: 3000. That number doesn’t have any particular significance. I just
+chose a round number at random that’s unlikely to already be in use (that’s
+good enough for now, but we’ll see how to improve on this later).
+Handlers, ResponseWriter, and Request
+http.ListenAndServe(":3000", ...)The HTTP server is now listening for incoming connections to port 3000.
+When it gets one, it will invoke some handler function to deal with it. The
+handler we’ve specified in this example is:
+hello is a function defined in our program:
+(Listing hello/7)
+All HTTP handler functions take these two parameters: a ResponseWriter
+object and a Request pointer. The Request is not used in our example, since
+the handler always sends the same response, whatever the request.
+How do we send that response? That’s what the ResponseWriter object is
+for. In effect, it represents the connection back to the client. It’s a conduit
+for any data that we want to send in response to the request, like this:
+You may not have seen the fmt.Fprintln function before, but it does
+exactly the same job as our old friend fmt.Println. The only difference is
+that, whereas Println always prints to the terminal, Fprintln can print to
+any destination we specify. In this case it’s w, the parameter representing the
+ResponseWriter.
+You might wonder why this is necessary: why don’t we just use Println
+here? The answer is that Println would print its message to the terminal on
+the computer where the server program is running. But the whole point of
+an HTTP server is to be able to send messages over the network, to some
+remote client. The w parameter represents our connection to that client, so
+http.HandlerFunc(hello)
+func hello(w http.ResponseWriter, r *http.Request) { 
+    fmt.Fprintln(w, "Hello, world") 
+}
+fmt.Fprintln(w, "Hello, world")we can use it with Fprintln to send messages to them instead of the local
+terminal.
+ListenAndServe listens forever
+Let’s look again at the main function that actually starts the server:
+(Listing hello/7)
+You might be wondering why the program wouldn’t simply exit straight
+away when http.ListenAndServe returns. That’s a great question, and the
+answer is that it would! But http.ListenAndServe doesn’t return, as a matter
+of fact (unless there’s some fatal error).
+Instead, it just listens and serves. It keeps on listening and serving
+essentially forever, or until we get bored and switch off the computer, or
+otherwise terminate the program.
+Trying out the server
+Let’s go ahead and run the program, then. What output does it produce?
+go run ./cmd/server
+...
+Nothing to see here! But then, if you think about it, that’s what we should
+expect. We’ve asked the program to sit and wait for connections, and that’s
+all it’s doing.
+To see if the server is actually serving, then, let’s make an HTTP request to
+it. We can use the curl tool for this (if you don’t have it installed, you could
+use a web browser instead).
+func main() { 
+    http.ListenAndServe(":3000", http.HandlerFunc(hello)) 
+}curl localhost:3000
+Hello, world
+The special host address localhost, by the way, means exactly what it
+sounds like. It refers to the local host, in other words this computer that
+we’re typing on. And you know what the :3000 part means already: it
+identifies port 3000 on that host.
+Concurrent connections
+It looks like the server accepted the connection, and responded with the
+message we expected. This successful exchange of request and response is
+only the beginning, though. We can keep on requesting the “Hello, world”
+message as many times as we like, and the server will happily supply it for
+us.
+In fact, though it isn’t apparent here, the server supports concurrent
+connections. If there were hundreds or thousands of clients all sending
+requests at once, they wouldn’t each have to queue up and wait their turn.
+Instead, the server automatically starts as many goroutines as necessary to
+serve all the requests concurrently. That’s one reason Go is such a popular
+language for writing network services: it makes this kind of scaling easy.
+Once again we’ve written a concurrent Go program without that
+concurrency necessarily being obvious. Even though there’s no go statement
+visible in our source code, this program potentially has lots of goroutines:
+one for each connection. (There is a go statement, in fact, but it’s hidden
+away inside the implementation of ListenAndServe, so you don’t have to
+write it yourself.)
+A simple HTTP client in Go
+This is encouraging news for our bookstore project. We wanted to write a
+program that would be able to concurrently serve catalog information to
+multiple sales terminals, and now we have a way to do it. We can use anHTTP server to listen for requests about books and respond to them with
+data from the catalog.
+http.Get
+Writing the server is one half of the problem, but we also need client
+programs. These are also fairly easy to write in Go. Let’s make another new
+program, this time in cmd/client:
+package main
+ 
+import ( 
+    "fmt" 
+    "io" 
+    "net/http" 
+) 
+ 
+func main() { 
+    resp, err := http.Get("http://localhost:3000") 
+    if err != nil { 
+        panic(err) 
+    } 
+    defer resp.Body.Close() 
+    if resp.StatusCode != http.StatusOK { 
+        panic(resp.StatusCode) 
+    } 
+    msg, err := io.ReadAll(resp.Body) 
+    if err != nil { 
+        panic(err) 
+    } 
+    fmt.Printf("%s", msg) 
+}(Listing hello/7)
+Don’t bridle too indignantly at the use of panic to handle all errors here:
+this is just sketch code to prove the concept. We can and will do better in
+the real program, but the interesting bit here is how we make the HTTP
+request.
+To do this, we call http.Get. As the name suggests, it makes an HTTP GET
+request for us, just like the one we made with the curl tool earlier:
+URLs
+You’ll recognise the argument to Get as a Uniform Resource Locator
+(URL), which is HTTP’s way of specifying some particular resource, on a
+particular host. It has four parts, some of them optional:
+PROTOCOL://HOST:PORT/URI
+And here’s the URL we’re requesting:
+http://localhost:3000
+In this case the protocol, unsurprisingly, is http. There are other protocols,
+but we don’t care about them just now.
+The host and port are localhost:3000, which identifies our little server.
+We’ve omitted the optional URI part, so we’re implicitly requesting the
+default URI, which is /. As we saw earlier, a URI is a slash-separated path
+identifying some resource in a tree, and the tree starts at /, the top-level
+resource.
+http.Get will try to make this request for us, but, as the err return suggests,
+this could fail. The URL might be invalid in some way, or maybe we can’t
+contact the specified host, or there’s no server listening at the specified
+resp, err := http.Get("http://localhost:3000")address. All sorts of things could go wrong, indeed: the net is dark and full
+of errors.
+Assuming there’s no error this time, though, we’ll get an object representing
+the server’s response. In this program, we name it resp:
+(Listing hello/7)
+The response status code
+This object, whose type is http.Response, is a struct containing all the data
+about the response, but we’re usually only interested in one or two of its
+fields.
+The first thing we need to look at is the status code, which as we saw in the
+earlier example, will be 200 if the request was successful. Any other status
+means something has gone wrong, so we need the program to bail out.
+To do this, we could have written:
+This is numerically correct, but it’s not clear to the reader what’s going on
+unless they happen to know that “200” means “OK” (because of course it
+does!) To avoid using such a “magic number” in the code, we can use one
+of the predefined status constants, such as http.StatusOK:
+(Perhaps less usefully, we could also have compared it against 
+http.StatusTeapot; when engineers do decide to indulge themselves in a
+joke, they really lean into it.)
+resp, err := http.Get("http://localhost:3000")
+if resp.StatusCode != 200 {
+if resp.StatusCode != http.StatusOK {The response body
+If we get a response with “OK” status, that means we can now look at the
+response body: the payload containing the actual data we asked for. This is 
+resp.Body. We read the data from it, and print the result:
+You might wonder why we can’t simply print resp.Body directly. That’s
+because resp.Body is what’s called a reader: an abstraction that we can read
+data from, byte by byte. This is a useful abstraction in Go because there are
+lots of different types of things that we can read bytes from: files, response
+bodies, network connections, and many more.
+And just as we did with a file object in an earlier chapter, we use defer to
+make sure that the body reader gets closed once we’re done with it:
+io.Reader and io.ReadAll
+The reader abstraction—which is defined in the io package as io.Reader—
+lets us write code that can read data from any of these various types. You
+can probably guess what the io.ReadAll function does with a reader, then: it
+reads all of it!
+If there’s no error during the reading process, then what we end up with in 
+msg is the contents of the response body, which we print as a string:
+msg, err := io.ReadAll(resp.Body) 
+... 
+fmt.Printf("%s", msg)
+defer resp.Body.Close()
+msg, err := io.ReadAll(resp.Body) 
+... 
+fmt.Printf("%s", msg)Trying out the client
+That’s our very basic HTTP client program; let’s run it and see what
+happens.
+go run ./cmd/client
+panic: Get "http://localhost:3000": dial tcp [::1]:3000: connect: 
+connection refused
+Whoops. “Connection refused” means there’s no server accepting
+connections on port 3000. That’s because I forgot that we need to have the
+server program already running beforehand. To do that, I’ll open another
+terminal and run it there:
+go run ./cmd/server
+...
+I’ll leave that terminal open with the server program still running, switch
+back to my other terminal, and run the client program again:
+go run ./cmd/client
+Hello, world
+We now have two Go programs talking to each other over HTTP. This is
+encouraging!
+A networked bookstore API
+Now that we know how to write at least the simplest HTTP clients and
+servers in Go, let’s start thinking about how to add HTTP support to the 
+books package.
+One starting point would be to create a new program to act as an HTTP
+server, serving book information from a single central host. Then we could
+take our existing “point of sale” programs such as list and find and turnthem into clients of this HTTP server. That way, we could share a single
+book catalog to any number of computers on the bookstore network (or, in
+principle, anywhere on the internet).
+A service like this is known as a network API, and it’s the same term we
+encountered earlier in this book for the interface to a software abstraction or
+a library package such as books. That’s no coincidence, because an API
+server makes an abstraction API available to programs over the network,
+not just on the local computer. We’ll be taking our existing Happy Fun
+Books API and making it available over the network.
+A networked list program
+That sounds like a complicated task, but it’s really only a matter of gluing
+together bits of code that we already have. For example, think about using
+the list client to request information about all the books in the catalog.
+The client could make an HTTP request along the lines of “get all books”,
+and the server could send the catalog information in its response, encoded
+into bytes in some way. We can use whatever encoding we like, but it so
+happens that we’ve already written code to serialise the catalog as JSON (in
+the Sync method), so let’s use JSON.
+The client will need to decode this response data into a slice of Book objects,
+but again, we’ve already more or less solved that problem (in the 
+OpenCatalog function).
+As a proof of concept, then, let’s try to write the simplest server (and client)
+that will implement a networked list operation.
+As always, we’ll start with a test. Let’s see if we can write a test that starts a
+book server, makes an HTTP request asking it to list the catalog, and then
+checks that the response contains the expected data.
+Again, there’s nothing here we haven’t done before in one form or another.
+The challenge now will be to put these elements together in the right way,
+and we’ll go step by step.First, we need to start the server, and we need to do that concurrently, so
+that the test can continue and make an HTTP request. As you’ll recall, we
+can use a go statement to create a new goroutine. Something like this should
+work:
+To start the server, we would ideally just call a single function, similar to 
+http.ListenAndServe, specifying the address to listen on:
+Then there’s the question of which book catalog the server should serve.
+Every store will have a different catalog, so it would be convenient if we
+could pass this as an extra argument to our ListenAndServe function:
+Handling startup errors
+http.ListenAndServe usually doesn’t return, as we’ve seen, but if it does
+it’s because there’s an error. For example, it might not able to listen on the
+requested address, perhaps because it’s already in use.
+Our function will need to be able to return such errors too. If it returns,
+there’s some problem that means we won’t be able to run the test, so we’d
+better handle that by bailing out with panic:
+go func() { 
+    ... // start server 
+}() 
+... // make request
+books.ListenAndServe(":3000")
+catalog := getTestCatalog() 
+catalog.Path = t.TempDir() + "/catalog" 
+go func() { 
+    books.ListenAndServe(":3000", catalog) 
+}()Making the request
+Now let’s make the request:
+More or less the same code that we had in our primitive “client” program.
+And the next part will be roughly the same too: check the HTTP status code
+to see whether the request was successful.
+If we get past this point, we know that we successfully connected to the
+server, made the request, and got at least an OK response. But how do we
+know that the response body contains the correct data?
+Decoding the response body
+One way would be to compare the contents of resp.Body against the exact
+JSON string we expect. That’s not hard to construct, since we know it will
+go func() { 
+    err := books.ListenAndServe(":3000", catalog) 
+    if err != nil { 
+        panic(err) 
+    } 
+}()
+resp, err := http.Get("http://localhost:3000/") 
+if err != nil { 
+    t.Fatal(err) 
+} 
+defer resp.Body.Close()
+if resp.StatusCode != http.StatusOK { 
+    t.Fatalf("unexpected status %d", resp.StatusCode) 
+}be the JSON equivalent of what GetAllBooks on the test catalog returns.
+Something like this:
+And so on. We could put this string into the test as a constant, or even save
+it to a file, and read the contents of that file in the test. But that sounds a bit
+boring, and we’re not really interested in the JSON data as such. What we
+care about is the book information that it represents.
+Let’s have the test do exactly what the real client will have to do, then:
+decode the JSON into Book data. Then we can compare it directly with the
+test catalog to make sure it’s correct.
+Laziness is a key virtue for any programmer, so we’ll start by asking if we
+can just copy any similar code that’s already been written. We know that 
+OpenCatalog decodes JSON data, and here’s the relevant snippet:
+Nice, but we need to make a slight change for this test, because we’re
+expecting a []Book, not a Catalog. Something like this might work, then:
+Notice that we’re passing json.NewDecoder the response body here, rather
+than a file handle. Remember how we saw earlier in this chapter that lots of
+different types implement the io.Reader interface, including files and
+response bodies? Well, that’s how NewDecoder works, too: it takes an 
+{ 
+  { 
+    "Title": "In the Company of Cheerful Ladies", 
+    ...
+catalog := NewCatalog() 
+err = json.NewDecoder(file).Decode(&catalog.data)
+bookList := []books.Book{} 
+err = json.NewDecoder(resp.Body).Decode(&bookList)io.Reader parameter, meaning that we can pass it any reader and it will try
+to read JSON from it.
+Because that could fail, or the JSON might be invalid, Decode returns an
+error, and the test needs to check that, as always. But assuming there’s no
+error, then bookList should be exactly the slice of books (in some arbitrary
+order) that the test catalog contains. And we already have a test helper to
+assert that (how convenient!)
+So, here’s the complete test:
+assertTestBooks(t, bookList)
+func TestServerListsAllBooks(t *testing.T) { 
+    t.Parallel() 
+    catalog := getTestCatalog() 
+    catalog.Path = t.TempDir() + "/catalog" 
+    go func() { 
+        err := books.ListenAndServe(":3000", catalog) 
+        if err != nil { 
+            panic(err) 
+        } 
+    }() 
+    resp, err := http.Get("http://localhost:3000/") 
+    if err != nil { 
+        t.Fatal(err) 
+    } 
+    defer resp.Body.Close() 
+    if resp.StatusCode != http.StatusOK { 
+        t.Fatalf("unexpected status %d", resp.StatusCode) 
+    } 
+    bookList := []books.Book{} 
+    err = json.NewDecoder(resp.Body).Decode(&bookList) It looks fairly involved, but we understand all the steps involved, because
+we’ve practised them before. Let’s write a dummy implementation of 
+ListenAndServe, then, and we’ll make sure the test fails as expected.
+A dummy server implementation
+Let’s create a new source file for the server-related code. It could perfectly
+well live in the books.go file, along with everything else, but it seems tidier
+to me to keep it separate. I’m going to create server.go, in the same folder
+as books.go, and add this code to it:
+Notice that this file declares package books at the top, just as books.go does.
+We’re saying that even though this is a different source file, it’s still part of
+the same package; that’s what the package clause does.
+This ListenAndServe function does absolutely nothing except return nil, so
+we feel that the test should run and fail. At least, we hope so, or it would be
+a pretty useless test.
+But which test failure message will we see? For extra points, see if you can
+work this out before running it.
+    if err != nil { 
+        t.Fatal(err) 
+    } 
+    assertTestBooks(t, bookList) 
+}
+package books 
+ 
+func ListenAndServe(addr string, catalog *Catalog) error { 
+    return nil 
+}I think, since we’re not even running a server yet, that the http.Get request
+should fail, since it won’t be able to connect to localhost on port 3000.
+Well, here goes:
+go test
+--- FAIL: TestServerListsAllBooks (0.02s) 
+    books_test.go:210: invalid character 'H' looking for beginning 
+    of value
+That’s strange. This error must be coming from the JSON decoding stage,
+which is surprising because we don’t think we served any JSON. Where’s
+this mysterious “H” coming from?
+One problem is that our test diagnostics aren’t very good. We know that,
+whatever data the server sent, it wasn’t valid JSON—but what was it? How
+can we get that data, for example to print it out as part of our failure
+message?
+Unmarshaling JSON from bytes
+Well, consider what the JSON decoder does. It reads bytes from the reader
+we passed to NewDecoder, which in our case is the resp.Body. But the thing
+about a reader is that it’s a one-way stream of bytes: once they’ve been
+read, they’re gone. Reading, in other words, consumes the contents of the
+reader, and you can’t get them back.
+So, by the time we know that the JSON decoder hit an error, the contents of 
+resp.Body have been drained, and we no longer have any way to know what
+they were. That’s awkward, because it makes it hard to tell exactly what
+went wrong.
+One solution might be to use io.ReadAll to read the bytes into a slice before
+trying to decode them. That way, if we can’t decode them, we still have a
+copy of the bytes that we can print. But how do we decode JSON from a
+slice of bytes instead of a reader?Fortunately, the json package has a way to do this, using the 
+json.Unmarshal function:
+(Listing books/19)
+We read the contents of resp.Body into the variable data, which is a slice of
+bytes. Then we try to decode it into bookList using json.Unmarshal, but if
+that fails, we can print data as a string, to see what the bogus JSON actually
+was.
+“Marshalling”, by the way, is what they do in a railway yard, when they put
+together the various different cars and wagons into a single train for
+transport, and then unmarshal them at the other end. It’s the same idea here:
+the different bits of data in the response are (or will be) marshalled by the
+server into a JSON “train”, and unmarshalled in our test.
+An unexpected server
+Now that we have some better diagnostics, then, let’s run the test again and
+see what the bogus response body actually was:
+invalid character 'H' looking for beginning of value in "Hello, 
+world\n"
+It’s coming from inside the house
+data, err := io.ReadAll(resp.Body) 
+if err != nil { 
+    t.Fatal(err) 
+} 
+err = json.Unmarshal(data, &bookList) 
+if err != nil { 
+    t.Fatalf("%v in %q", err, data) 
+}Well, I wasn’t expecting that! It looks as though, even though we didn’t
+start a server in the test, we already have some server listening on port 3000
+and serving the message “Hello, world”.
+Because of course we do! Remember how I ran the cmd/server program in
+a spare terminal earlier, and left it running while we tested the client
+program? Oops. It’s still running. Let’s shut that down and try the test
+again:
+Get "http://localhost:3000/": dial tcp [::1]:3000: connect: 
+connection refused
+That’s more like it. Now that there’s nothing listening on port 3000, the test
+correctly reports that it was unable to connect.
+This is the sort of thing that happens all the time when we’re developing
+clients and servers. It’s quite possible to write a test that accidentally
+succeeds because the real server was running, instead of a test server.
+Fortunately, this one failed instead.
+It’s fine, though, because it gives us the opportunity to improve our test, by
+printing more helpful diagnostics in the case of a failure; we also learned
+about the useful json.Unmarshal function.
+What can we learn from this? Obviously I should try to remember to shut
+down servers after I’m done with them, but is there a more general point to
+be made here about testing servers?
+Remember how we saw, in a previous chapter, that tests can have
+unforeseen side-effects if they accidentally read or write each other’s disk
+files? We fixed that issue by giving each test its own unique temporary
+directory, using t.TempDir. Could we do something similar in this case?
+A unique server
+In other words, could we give each test its own unique server? Yes, if we
+used different listening ports, we could do exactly that. That way, multipletests wouldn’t interfere with each other by making parallel requests to the
+same server.
+This is easily done if we use, say, port 3000 for this test, then port 3001 for
+the next test, and so on. But it’s a little annoying to have to keep coming up
+with new port numbers, and we might easily forget and end up with several
+tests trying to run servers on the same port.
+It also doesn’t solve the problem of what happens if there’s already some
+unrelated server that just happens to be listening on one of the ports we
+chose. What we need is a way for each test to get its own unique port
+number that we can guarantee is not already in use.
+Luckily for us, it turns out that’s something that TCP/IP provides. Port
+number 0 is reserved, meaning that no one can listen on it, and most
+operating systems treat it as a request for a random free port number.
+So, if we change our listen address from :3000 to :0, we should get a server
+on some unique port that isn’t already in use, which is just what we wanted.
+There’s only one problem: we don’t know which one!
+In other words, having started the server, we then want to make an HTTP
+request to the server’s address. But, if it’s random, then we can’t predict
+what it will be, and there’s no way to ask the server.
+In my book The Power of Go: Tests, I share a little trick for this. I use a
+helper function that listens on a port directly, using the net.Listen function,
+and then returns the actual address of that listener (closing it down in the
+process, so that the port becomes free again). Here it is:
+func randomLocalAddr(t *testing.T) string { 
+    t.Helper() 
+    l, err := net.Listen("tcp", ":0") 
+    if err != nil { 
+        t.Fatal(err) 
+    } (Listing books/19)
+Serving on a random local address
+So, if we borrowed this idea, we could write something like:
+In other words, we first of all get the random local address, whatever it
+turns out to be, and store it in the addr variable. Then we start our test
+server on that address, and make our client request to it using the same
+address.
+The test still won’t pass, because we still haven’t actually started a server. If
+we run it a few times, though, we should see it repeatedly failing to connect,
+but each time to a different address. Let’s try:
+dial tcp [::]:49575: connect: connection refused 
+dial tcp [::]:49614: connect: connection refused 
+dial tcp [::]:49631: connect: connection refused 
+...
+Nice. We now have a way to give each test its own unique server on an
+unused address, and to know what that address is. We’re ready to
+    defer l.Close() 
+    return l.Addr().String() 
+}
+addr := randomLocalAddr(t) 
+go func() { 
+    ... 
+    err := books.ListenAndServe(addr, catalog) 
+    ... 
+}() 
+resp, err := http.Get("http://" + addr) 
+...implement ListenAndServe for real.
+Here’s what we know so far
+You now understand the basics of TCP/IP, including hosts, ports, and
+connections, and you’ve seen how a higher-level protocol such as HTTP
+can use TCP connections to serve resources to clients using a request /
+response exchange.
+You’ve met Go’s very useful http package, and used it to write a pair of
+programs implementing a “hello, world” server and client. You know how 
+ListenAndServe behaves, and how to write an HTTP handler function,
+including how to write data to the client using the ResponseWriter object.
+You can use http.Get to make requests, and you know how to check the
+response status and read the data from the response body.
+You’ve learned how to decode JSON data in responses, either by streaming
+directly using NewDecoder, or by reading the bytes first with io.ReadAll, and
+then decoding them with Unmarshal.
+You’ve also picked up some useful techniques for testing Go servers, such
+as starting the server inside a goroutine, and using TCP port 0 to get a
+unique, random free port for each test’s instance of the server.

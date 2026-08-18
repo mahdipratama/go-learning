@@ -1,0 +1,696 @@
+5. Map mischief
+Thanks to your excellent work in the previous chapter, we now have the
+code necessary to search for a book by its ID, and retrieve its details. This is
+the sort of thing that we’ll need for Happy Fun Books, so let’s write a
+program that staff could run to do a book search.
+A find command
+First, we need to create a new subfolder in cmd for the command we’ll be
+adding. Shall we call it find?
+mkdir cmd/find
+This is where our new main.go file will live. Let’s start with a quick sketch.
+We know how to call GetBook, because we’ve already done it in a test. And
+it takes the ID of the book we’re looking for, so where do we get that from?
+In practice, users will want to supply the ID on the command line, but let’s
+keep things simple for now and start by looking up some fixed ID:
+got, ok := books.GetBook("xyz")And we know that the ok variable tells us whether the book was actually
+found. If it’s not, we should probably inform the user:
+How polite! Courtesy costs nothing, after all. If the book is found, though,
+we should print out its details, and we know how to do that, too:
+Implementing find
+The pieces are coming together. Here’s what we have:
+if !ok { 
+    fmt.Println("Sorry, I couldn't find that book in the 
+catalog.") 
+    return 
+}
+fmt.Println(books.BookToString(book))
+package main
+ 
+import ( 
+    "books" 
+    "fmt" 
+) 
+ 
+func main() { 
+    book, ok := books.GetBook("xyz") 
+    if !ok { 
+        fmt.Println("Sorry, I couldn't find that book in the 
+catalog.") 
+        return 
+    } Let’s run it and see what happens:
+go run ./cmd/find
+White Heat by Dominic Sandbrook (copies: 2)
+Great. But we need to be able to search for any book by ID, not just this
+one. That means we’ll need to be able to supply the ID as an argument to
+the program. For example, users might run a command like:
+go run ./cmd/find abc
+Command-line arguments and os.Args
+The standard library has a variable os.Args that we can use to get the
+command-line arguments. os.Args is a slice of strings, and when the
+program starts, the arguments the user gave to it will be the elements of this
+slice.
+There’s one peculiarity to know about: the program name itself is also
+included in os.Args, as the first element (os.Args[0]). Usually we don’t
+need this, but it can be helpful sometimes. Mostly, though, we want only the
+command-line arguments, which start at os.Args[1].
+Fine. If the user gives the book ID as an argument, that string should end up
+in os.Args[1]. Let’s see what we can do:
+    fmt.Println(books.BookToString(book)) 
+}
+package main
+ 
+import ( 
+    "books" 
+    "fmt" 
+    "os" This looks reasonable, so here goes:
+go run ./cmd/find abc
+In the Company of Cheerful Ladies by Alexander McCall Smith 
+(copies: 1)
+Checking arguments
+This is encouraging, but now that the program requires an argument, what
+will happen if we run it without one?
+go run ./cmd/find
+panic: runtime error: index out of range [1] with length 1
+Whoops! This makes sense under the circumstances: as we saw in the
+previous chapter, asking for a slice element that doesn’t exist is a run-time
+error. But the message isn’t very friendly. Let’s instead check to see if we
+have an argument, and if not, show a more useful response:
+) 
+ 
+func main() { 
+    ID := os.Args[1] 
+    book, ok := books.GetBook(ID) 
+    if !ok { 
+        fmt.Println("Sorry, I couldn't find that book in the 
+catalog.") 
+        return 
+    } 
+    fmt.Println(books.BookToString(book)) 
+}(Listing books/13)
+Now we not only don’t panic if the ID is missing, but we also show the user
+an example of how to use the program correctly. Much better.
+Go is a popular language for writing command-line tools, and even a text-
+based user interface can be quite sophisticated. If you think about the go
+tool itself, it takes all sorts of arguments, verbs, flags, and so on, and the
+code to handle them can be complicated to write, as well as to test.
+We won’t go into all that stuff too much here, because I’ve written a whole
+other book about it: The Power of Go: Tools covers the art of writing
+powerful and usable tools in Go with delightful user interfaces. It’s the ideal
+next step after you’ve finished this book: you’ll learn all about files and
+filesystems, shells, test scripting, and more.
+For now, we’ll stick to programs with very simple interfaces, which makes
+the code easier to write, and the programs easier to use.
+func main() { 
+    if len(os.Args) != 2 { 
+        fmt.Println("Usage: find <BOOK ID>") 
+        return 
+    } 
+    ID := os.Args[1] 
+    book, ok := books.GetBook(ID) 
+    if !ok { 
+        fmt.Println("Sorry, I couldn't find that book in the 
+catalog.") 
+        return 
+    } 
+    fmt.Println(books.BookToString(book)) 
+}A more efficient data structure
+We’ve made good progress towards supporting Happy Fun Books
+operations, but there’s still something that’s not ideal about the way we’ve
+implemented GetBook here. Given a book ID, we search for it in the catalog
+by looking at every book in turn, asking, in effect, “Is this the one? No? Is
+this the one? No…” and so on.
+Clearly this works, in that it’s guaranteed to find the book eventually if it’s
+in the catalog. But, with a large catalog, “eventually” could be quite a long
+time. We might be lucky and find the desired book near the start of the
+catalog, or we might be unlucky and only find it near the end.
+Big-O notation
+On average, using a linear search strategy like this, if we have N books,
+we’ll have to check N/2 of them before we find the one we want. That
+means the more books we have, the slower it becomes to find any one of
+them. Surely we can do better than that?
+In computer science, there’s a way to describe this behaviour of an
+algorithm as the number of items scales up: it’s called big-O notation. For
+example, since the time to search the catalog grows linearly (that is, in
+direct proportion) with the number of books N, we say that our algorithm is
+O(N), or “order N”. The bigger N is, the longer the search takes (on
+average).
+In database jargon, a search like this is called a full table scan, and it’s
+relatively slow, so we’d prefer to avoid it when speed is important (such as
+when customers are lining up around the block to buy their copy of Shelby
+Foote’s The Civil War: A Narrative).
+Maybe a slice isn’t the best way to store our book catalog, then. Ideally, we
+want a data structure that can map a book ID directly to the corresponding
+book (in database jargon this is called an index on the book ID).A search like this would be O(1), or “order 1”, meaning that the search time
+never gets any longer, no matter how many books we have. That sounds
+great! Can we do it?
+Introducing the map
+It turns out that Go has exactly the data type we want, and it’s called a map.
+Nothing to do with geography; this is “mapping” in the mathematical sense
+of associating elements of one set (book IDs, for example) with those of
+another set (the corresponding books).
+A map is quite similar to a slice, in a way: it’s a way of grouping together a
+bunch of elements, all of the same type. The difference between maps and
+slices is the way we store and retrieve those elements.
+To get a specific element of a slice, as we’ve already seen, we can use its
+index, that is, its position in the slice. In effect, we’re mapping some unique,
+non-negative integer to some corresponding element.
+A map is just the same, but the index doesn’t have to be an integer! The key
+can be (almost) any Go type. For example, we could use a string, such as
+our book ID.
+The nice thing about a map is that we don’t have to search through every
+element in turn to find a specific one. Given the right key, the map will
+return the corresponding element straight away (provided it exists, that is).
+This means that, no matter how large our catalog of books, book searches
+will always take the same amount of time. That sounds perfect, so let’s see
+if we can update the program to use a map instead of a slice for the catalog.
+First of all, do we need to update the tests? Surprisingly, perhaps, we don’t.
+The only two functions affected are GetBook and GetAllBooks, and while
+we’ll need to change their implementation, their behaviour won’t change.
+(At least, not in a way that’s visible to the tests; they’ll probably be faster,
+though, especially with real data).The most important change we’ll need to make is to the definition of the 
+catalog variable: the central repository of books we have in stock. Right
+now, it’s defined as a slice of Book, and we need to change that to a map
+instead.
+As you’ll remember from the previous chapter, there’s no such type as “a
+slice” in Go, only a slice of some specific type such as Book. Similarly,
+there’s no such type as “a map”, only a map of some type (the key) to some
+other type (the element).
+What do we need here? Our key will be a string, like “abc”. The element,
+as before, will be a Book. That type in Go is spelt map[string]Book, and
+pronounced “map of string to Book”. It’s all one word, no spaces, with map
+followed by the key type in square brackets, followed by the element type:
+Writing a map literal of this type is pretty straightforward:
+map[string]Book
+var catalog = map[string]Book{ 
+    "abc": { 
+        Title:  "In the Company of Cheerful Ladies", 
+        Author: "Alexander McCall Smith", 
+        Copies: 1, 
+        ID:     "abc", 
+    }, 
+    "xyz": { 
+        Title:  "White Heat", 
+        Author: "Dominic Sandbrook", 
+        Copies: 2, 
+        ID:     "xyz", 
+    }, 
+}(Listing books/13)
+It’s quite similar to the corresponding slice literal, isn’t it? The only
+difference is that instead of a comma-separated list of elements, we have a
+comma-separated list of key-element pairs:
+Turning maps into slices
+Okay. Since we’ve changed the type of catalog, we expect to also have to
+make some changes to the functions that access the catalog: GetBook and 
+GetAllBooks. Let’s check GetAllBooks first. Do we have any compile
+errors?
+Yes, we do. Here’s the code we have right now:
+When catalog itself was defined as a []Book, this was fine. Essentially, 
+GetAllBooks has no real work to do: it returns catalog directly.
+This won’t do now that we’ve changed catalog to be a map: we get a type
+mismatch.
+cannot use catalog (variable of type map[string]Book) as []Book 
+value in return statement
+Makes sense, doesn’t it? The function’s signature says it returns a []Book,
+and that’s what we still want it to do. But catalog is not of that type; it’s of
+type map[string]Book instead. How can we turn one into the other?
+"key": element, 
+...
+func GetAllBooks() []Book { 
+    return catalog 
+}Well, we could do it the laborious way. We could write a for ... range
+loop over the map, appending each book to a slice of results that we then
+return. That would work, but there’s a more concise way to do it.
+First, instead of ranging over the map to visit each book in turn, we can use
+the standard library maps.Values function to get all the elements of the map
+at once. To do that, we’ll import the maps package:
+Now we can write:
+Iterators, maps.Values, and slices.Collect
+This is neat, but we’re not quite done yet. What maps.Values gives us is, not
+a slice of Book, but an iterator of Book. You could think of an iterator as
+being like a “lazy slice”: it doesn’t actually produce any elements until you
+ask it to.
+Since we very often want to visit each element in a sequence in turn, an
+iterator is perfect for this. It doesn’t waste time computing all the elements
+before we need them, and it doesn’t allocate the memory required to hold
+all the elements at once. It yields one element at a time, and only when we
+actually ask for it.
+To do that, we could use a range loop to visit each element in turn:
+But another very common thing to do with an iterator is to collect all its
+elements into a slice, and that’s what we want to do here. We can use 
+import "maps"
+books := maps.Values(catalog)
+for book := range maps.Values(catalog) { 
+    ... // do something with each `book` 
+}slices.Collect to do that. First, we’ll import the slices package:
+Then we can write GetAllBooks like this:
+(Listing books/13)
+To get a map’s elements as a slice, then, we first of all get an iterator of the
+elements using maps.Values. Then we use slices.Collect to consume that
+iterator and collect all the elements into a slice. And that’s our result.
+Unfortunately, there are so many other things I want to cover in this book
+that there isn’t really space to talk much about iterators, though it’s a
+fascinating subject and well worth understanding. My book Know Go goes
+into all the detail we can’t include here, as well as explaining the very
+important topics of interfaces and generics. By the time you’ve finished this
+book, you’ll be in the perfect position to start learning those more advanced
+concepts.
+Slices and maps have a lot in common
+So, what changes do we need to make to GetBook? Here’s what we have
+right now:
+import "slices"
+func GetAllBooks() []Book { 
+    return slices.Collect(maps.Values(catalog)) 
+}
+func GetBook(ID string) (Book, bool) { 
+    for _, book := range catalog { 
+        if book.ID == ID { 
+            return book, true 
+        } (Listing books/12)
+Surprisingly, perhaps, this still compiles, and still passes the test! That’s
+because slices and maps are really quite similar: both work with range, for
+example, and both produce the results you’d expect. That makes sense if
+you think of a slice as a special case of a map: one where the keys are
+constrained to be non-negative integers.
+With a slice, range gives us each index and element pair in turn. With a
+map, range gives us each key and element pair in turn.
+That’s what we’re getting here, so each time round the loop, book is the next
+book in the map, and we check its ID against the one we’re looking for. So
+this code works exactly as it did before, except that it’s looping over a map
+rather than a slice.
+That’s not terrible, but recall that we were motivated to make this change in
+the first place by the fact that we don’t want to have to search through N/2
+books every time. We wanted a catalog type that lets us retrieve a book
+directly by ID, in a single O(1) lookup, without searching.
+And we have that now, so let’s take advantage of it. How do we look up an
+element in a map by key? We can use exactly the same syntax as for
+looking up a slice element by index:
+Not so fast, though: we know that the book with that ID might not be in the
+catalog. What happens then? What value gets assigned to book?
+Well, it’s the zero value, which you’ll remember is whatever the default
+value is for that particular type. With string, for example, it’s the empty
+    } 
+    return Book{}, false 
+}
+book := catalog[ID]string, and with int, it’s 0.
+What about with a struct, then? For example, what would the zero value of
+a Book struct be? The answer is that it’s a Book where every field has its
+default value. That is:
+Okay, good to know, but as you’ll recall from the previous chapter, this isn’t
+how GetBook works. Instead, GetBook returns a second, bool value along
+with the Book result, indicating whether or not the book was found.
+The ok syntax
+How do we know whether or not the book was found, if the map lookup
+returns only a “zero” Book? Well, it turns out there’s a very convenient way
+to do that. We can receive two values from the map instead of one:
+And it’s not a coincidence that we named the second value ok, because
+that’s what it is: it’s a bool value that’s true if the book was found, or false
+otherwise. Just what we need!
+Here’s the updated implementation of GetBook:
+Book{ 
+    Title:  "", 
+    Author: "", 
+    Copies: 0, 
+    ID:     "", 
+}
+book, ok := catalog[ID]
+func GetBook(ID string) (Book, bool) { 
+    book, ok := catalog[ID] (Listing books/13)
+This is nicer than the loop we had before, and its performance also scales a
+lot better. No matter how many books we have in stock, GetBook will
+always take more or less exactly the same time. Great!
+So, does our find program still work? Let’s try:
+go run ./cmd/find abc
+In the Company of Cheerful Ladies by Alexander McCall Smith 
+(copies: 1)
+Nice. Let’s check list, too:
+go run ./cmd/list
+In the Company of Cheerful Ladies by Alexander McCall Smith 
+(copies: 1) 
+White Heat by Dominic Sandbrook (copies: 2)
+And one more time, for luck:
+go run ./cmd/list
+White Heat by Dominic Sandbrook (copies: 2) 
+In the Company of Cheerful Ladies by Alexander McCall Smith 
+(copies: 1)
+Wait, what? It looks like they came out in a different order the second time.
+Why would they do that?
+Iteration order of maps
+Well, as you probably suspected, the reason is to do with the fact that we’re
+now storing the catalog in a map instead of a slice. A slice is, by definition,
+    return book, ok 
+}an ordered sequence, so when we loop over it, we always get the elements
+in index order.
+That’s not true of a map. While there’s an obvious and sensible way to order
+a bunch of numbers, the keys of a map don’t have to be numbers, or even
+strings. So, since there’s not guaranteed to be any well-defined order for the
+keys, when we iterate over a map like this we’ll get its elements in arbitrary
+order, and it will be different from one run of the program to the next.
+That’s fine, and it doesn’t matter in what order we print the books for the 
+list program, but what about the GetAllBooks test? Doesn’t that compare
+the result of GetAllBooks with a slice where the books are in a fixed order?
+Yes, it does, and that means we can’t rely on this test always passing.
+Sometimes it will pass, by coincidence, but there must be times when it will
+fail. And we can prove that, by running the test a bunch of times:
+go test -count=100
+The result of GetAllBooks is in the expected order about 90% of the time,
+but we don’t want our tests failing for no good reason once in every ten
+runs. After all, the program is correct: it’s the test that’s unreliable, because
+it’s assuming something about the result of GetAllBooks that isn’t always
+true.
+And we don’t care about the order of the books returned by GetAllBooks,
+only that they’re all there. We can fix this flaky test by sorting the result
+slice before we compare it to the expected one.
+Sorting structs by field
+So, how to do that? If we had a slice of some ordered type (that is, a type
+like int or string where the ordering of values is obvious), we could sort it
+easily by using slices.Sort. But that’s not the case here.
+slices.Sort won’t work for a slice of Book because Go doesn’t know how
+to compare two Book values. Should they be ordered by title, author, numberof copies, or their ID fields? It’s up to us to decide, and it doesn’t matter for
+our purposes, so let’s sort them by author.
+To do that, we can use slices.SortFunc, which will sort a slice by asking us
+to provide a function that compares any two values. Here’s what that looks
+like:
+(Listing books/13)
+The first argument to SortFunc is the slice to sort, reasonably enough. The
+second is the comparison function we’re providing. It takes two Book
+values, which we call a and b, and returns a number indicating whether a
+should be sorted before or after b.
+We don’t need to do anything fancy here, since we want to sort the books
+by author, so we use the cmp.Compare function to compare the Author fields
+of the two values. With this done, the test has now stopped flaking:
+go test -count=100
+PASS
+Any time we’re testing code that queries a map, like GetAllBooks, we’ll
+probably want to use this technique to make sure the test is reliable. Since
+sorting is a relatively expensive operation, we don’t want to do it in 
+GetAllBooks, because users don’t care about the order of the books; it only
+matters for testing.
+Modifying the catalog
+got := books.GetAllBooks() 
+slices.SortFunc(got, func(a, b books.Book) int { 
+    return cmp.Compare(a.Author, b.Author) 
+})There’s one problem we haven’t yet solved: how do books get into the
+catalog in the first place?
+In other words, suppose a delivery of books arrives at one of our stores, and
+the staff now need to enter the details of the new titles into the catalog. How
+do they do that? Right now, the books in the catalog are fixed by the Go
+source code of the books package, so to add new books, we’d have to edit
+that source code and recompile the program. Not ideal!
+The magic function
+We’d like to be able to add (and, indeed, remove) books without changing
+the program itself. After all, the idea is that Happy Fun Books can scale up
+to many locations, each of which would have a different catalog of books,
+but all using the same store management software.
+Let’s design this new feature using what I sometimes call the “magic
+function” approach. That is, we imagine that there’s some wonderful
+function that does exactly what we want, in the way we want it to. What
+would it look like to call that function?
+The most straightforward way we could imagine adding a new book to the
+catalog is something like this:
+That is, we’re imagining that there’s some function we can call, named 
+AddBook, and we pass it a Book struct, and it adds that book to the catalog.
+Seems reasonable, doesn’t it? Sure, this function doesn’t exist yet, but we
+can already see that it would fit well into our existing package.
+AddBook(Book{
+    ID:     "123", 
+    Title:  "The Prize of all the Oceans", 
+    Author: "Glyn Williams", 
+    Copies: 2, 
+})Testing AddBook
+The name is obvious and says exactly what it does: AddBook. It makes sense
+that it would take a Book as its argument, and at the moment we can’t think
+of anything that it would usefully return. This seems like a good starting
+point.
+GOAL: Write a new test for our (still imaginary) AddBook function. I’ll
+leave the details up to you. Make sure it fails with a dummy implementation
+of AddBook that does nothing.
+HINT: Now you’re stretching your legs a bit as a Go developer. It’s not
+merely a matter of writing the code for the test: you’ve also got to decide
+what the test should do.
+You’ve had some practice at this already, but if nothing occurs to you right
+away, try the trick of describing to yourself in English what a useful test
+would assert about the results of calling AddBook.
+For example, when you call AddBook, something should change, but what?
+And how can you tell? See if you can figure it out.
+SOLUTION: Here’s my first version:
+func TestAddBook_AddsGivenBookToCatalog(t *testing.T) { 
+    t.Parallel() 
+    books.AddBook(books.Book{ 
+        ID:     "123", 
+        Title:  "The Prize of all the Oceans", 
+        Author: "Glyn Williams", 
+        Copies: 2, 
+    }) 
+    _, ok := books.GetBook("123") 
+    if !ok { Reasonable, isn’t it? We add a certain book to the catalog, and then we
+check to see if it was added—if so, we should be able to retrieve it by
+calling GetBook with its ID (“123”).
+And this test does indeed fail with the dummy AddBook, so is that it? Are we
+ready to move on and implement the magic function, or do we need to mull
+over the test a little more? Have one more look at the code and see if you
+can spot any potential problems.
+Postconditions and preconditions
+Here’s one interesting question we could ask about this test: what would
+happen to it if, at some time in the future, a book with the ID “123” already
+existed in the catalog? Well, that would render the test completely useless!
+To understand why, think about what the test would do under these
+circumstances if there were indeed a bug in AddBook. For example, suppose
+it did nothing at all, as our current dummy implementation does. Would this
+test detect that bug?
+No, it wouldn’t. It would successfully retrieve a book with the expected ID
+from the catalog, even though it wasn’t put there by AddBook. The test
+passes even if AddBook does nothing whatsover, and that’s actually slightly
+worse than not having a test at all, because it still looks like we have a test.
+What did we (okay, I) do wrong? I made a very common mistake in
+software testing, which is to be concerned only with the state of the world
+after calling the function under test.
+In the jargon, these are called postconditions: the test asserts that the
+postcondition of AddBook is that the given book exists in the catalog. But it
+says nothing about the preconditions. It would be useful to assert that the
+same book doesn’t exist before AddBook is called, wouldn’t it?
+        t.Fatal("added book not found") 
+    } 
+}Fine. Let’s make that change:
+Now we have a much more resilient test. Instead of merely asserting that
+the world is in a certain state after AddBook is called, the test asserts that
+calling AddBook actually changes the world. Isn’t that what we all want to do
+as software engineers? Well, now our test reflects that.
+A hint of disquiet
+How should we implement AddBook for real, then? Well, first we need to
+know how to add a new element to a map. The syntax is just the same as if
+we were assigning to a slice element:
+func TestAddBook_AddsGivenBookToCatalog(t *testing.T) { 
+    t.Parallel() 
+    _, ok := books.GetBook("123") 
+    if ok { 
+        t.Fatal("book already present") 
+    } 
+    books.AddBook(books.Book{ 
+        ID:     "123", 
+        Title:  "The Prize of all the Oceans", 
+        Author: "Glyn Williams", 
+        Copies: 2, 
+    }) 
+    _, ok = books.GetBook("123") 
+    if !ok { 
+        t.Fatal("added book not found") 
+    } 
+}
+catalog[book.ID] = bookHere’s a version of AddBook that passes the test:
+So, are we done now?
+Well, I don’t know about you, but all this talk about preconditions and
+postconditions has made me a little nervous. We have several tests now, and
+they all make various assumptions about the state of the catalog (which,
+remember, is a package-level variable, so it’s shared by all the tests).
+That was more or less fine as long as the catalog never changed, but now
+we are changing the catalog, by adding a new book to it. And we’re using 
+t.Parallel() in all our tests, to make them run concurrently. What that
+means in practice is that the tests won’t run in a fixed order, one after
+another: each test will be executed independently, without regard to what
+other tests are doing.
+That sounds like a recipe for problems, given that one test is modifying the
+catalog, and other tests are making assumptions about exactly what books
+are in the catalog. In fact, it seems like some of those other tests might fail
+sometimes, depending on whether or not the AddBook test has run before
+they look at the catalog.
+So, did we get lucky with the previous test run? Let’s try the -count=100
+trick again:
+go test -count=100
+Oh dear:
+--- FAIL: TestGetAllBooks_ReturnsAllBooks (0.00s) 
+    books_test.go:31: want []books.Book{books.Book{Title:"In the 
+    Company of Cheerful Ladies", Author:"Alexander McCall Smith", 
+    Copies:1, ID:"abc"}, books.Book{Title:"White Heat", 
+    Author:"Dominic Sandbrook", Copies:2, ID:"xyz"}}, got 
+func AddBook(book Book) { 
+    catalog[book.ID] = book 
+}    []books.Book{books.Book{Title:"In the Company of Cheerful 
+    Ladies", Author:"Alexander McCall Smith", Copies:1, ID:"abc"}, 
+    books.Book{Title:"White Heat", Author:"Dominic Sandbrook", 
+    Copies:2, ID:"xyz"}, books.Book{Title:"The Prize of all the 
+    Oceans", Author:"Glyn Williams", Copies:2, ID:"123"}}
+This is exactly what we feared: the GetAllBooks test is failing, even though 
+GetAllBooks itself actually works perfectly. That’s because (to spare your
+eyesight a little) the test is expecting the catalog to contain exactly and only
+these books:
+In the Company of Cheerful Ladies 
+White Heat
+And what it actually found was these:
+In the Company of Cheerful Ladies 
+White Heat 
+The Prize of all the Oceans
+You can see what’s happened, can’t you? On this particular test run, the 
+AddBook test added the new book right before the GetAllBooks test requested
+the catalog, and as a result it found an unexpected book, which caused it to
+fail.
+Data races
+And it gets worse, because not only are our existing tests failing, the new
+test is failing too:
+--- FAIL: TestAddBook_AddsGivenBookToCatalog (0.00s) 
+    books_test.go:64: book already present
+What’s that about? Well, count=100 doesn’t run the whole test suite a
+hundred times. It runs each test a hundred times, so since there are four
+tests, we now have four hundred concurrent tests running—including a
+hundred instances of the AddBook test.
+Suppose one instance of this test calls AddBook, and some time after that,
+another instance of the same test calls GetAllBooks to check theprecondition that the book isn’t in the catalog. But it is there now, because it
+was added by the other instance.
+Stepping on each other’s toes
+This seems like a pretty nasty problem. We don’t really want to give up
+running our tests in parallel, because it’s a big time-saver. And we certainly
+don’t want to give up being able to modify the catalog: that’s the whole
+point of what we were trying to do!
+But, on the other hand, we don’t want flaky tests, because that undermines
+the whole point of having tests. What can we do? You might like to ponder
+it a little yourself before reading on to hear what I think.
+Your first instinct might be to take out the troublesome t.Parallel(), and I
+completely understand why. If running the tests in parallel makes them
+unreliable, surely the obvious answer is “don’t do that”.
+But sadly, even this doesn’t solve the problem. After all, it’s not really a test
+problem. Suppose we have a large branch of Happy Fun Books, with
+several point-of-sale terminals. And suppose an associate is entering a new
+book into the catalog at terminal A, while another is simultaneously looking
+up the same book at terminal B. Does the lookup succeed or not?
+“It depends,” is the only answer we can give. If the call to AddBook happens
+one microsecond before the call to GetBook, then yes, the book will have
+been added, so it’ll be found. But if AddBook happens one microsecond after
+GetBook, then the search won’t find anything.
+The two concurrent function calls are in a race, literally: whichever one
+arrives at the critical section first “wins”, in some sense. That’s why this
+kind of problem is called a data race: it happens when the result of some
+concurrent operations depends on the microscopic details of ordering and
+timing. And that’s why our tests have become unstable.
+De-globalising the catalogThe fact is that we want to be able to concurrently access the catalog, and
+not only for testing: real bookstores need to do this, too. To make our tests
+reliable again, we need to eliminate the data race. So, how can we do that?
+The simplest and safest way to fix the test problem is to prevent concurrent
+access to the catalog by giving each test its own catalog. That way, any
+individual test doesn’t need to worry about the contents of the catalog
+changing underneath it, because no other test can change it.
+Yes, in the real bookstore the concurrent terminals will still need to share a
+global catalog, and there are ways of making that safe, too, but let’s tackle
+one problem at a time. First, what changes do we need to make to the
+existing code to eliminate the data race on catalog?
+The first thing we’ll need to do is to modify the functions in books so that,
+instead of referring to a single global catalog variable, they take the catalog
+as a parameter:
+And, happily, that’s the only change we need to make to the books package,
+apart from removing the now-redundant catalog variable.
+A test data helper
+Let’s now fix the tests, because each test will now need to create its own 
+catalog and pass it to all the functions it calls. We could write something
+like this, for example:
+func GetAllBooks(catalog map[string]Book) []Book 
+func GetBook(catalog map[string]Book, ID string) (Book, bool) 
+func AddBook(catalog map[string]Book, book Book) {
+catalog := map[string]books.Book { ... } 
+_, ok := books.GetBook(catalog, "123")But it’s going to be tedious and repetitive to keep defining the same map
+literal in every test. Let’s move that out to a helper function:
+This is a useful pattern any time you want to use the same test data in each
+of a bunch of tests: abstract that setup into a little function. It’s easy to
+write:
+(Listing books/14)
+And now every test can call getTestCatalog to get a crisp, new catalog of
+its very own, without worrying about some other test unexpectedly
+changing the catalog behind the scenes.
+Fixing the tests
+catalog := getTestCatalog()
+func getTestCatalog() map[string]books.Book { 
+    return map[string]books.Book{ 
+        "abc": { 
+            Title:  "In the Company of Cheerful Ladies", 
+            Author: "Alexander McCall Smith", 
+            Copies: 1, 
+            ID:     "abc", 
+        }, 
+        "xyz": { 
+            Title:  "White Heat", 
+            Author: "Dominic Sandbrook", 
+            Copies: 2, 
+            ID:     "xyz", 
+        }, 
+    } 
+}Finally, we need to modify all the calls to books functions in the tests, to
+add catalog as the first parameter:
+…and so on. Here’s our updated test for AddBook, for example:
+(Listing books/14)
+With this change complete, we can now run the tests as many times as we
+like in parallel and they’ll pass reliably. No more data races!
+Initializing the real catalog
+books.GetBook(catalog, "123")
+func TestAddBook_AddsGivenBookToCatalog(t *testing.T) { 
+    t.Parallel() 
+    catalog := getTestCatalog() 
+    _, ok := books.GetBook(catalog, "123") 
+    if ok { 
+        t.Fatal("book already present") 
+    } 
+    books.AddBook(catalog, books.Book{ 
+        ID:     "123", 
+        Title:  "The Prize of all the Oceans", 
+        Author: "Glyn Williams", 
+        Copies: 2, 
+    }) 
+    _, ok = books.GetBook(catalog, "123") 
+    if !ok { 
+        t.Fatal("added book not found") 
+    } 
+}There’s one thing left to fix. Our find and list commands don’t actually
+work anymore, since we removed the catalog variable from books. But we
+need some real catalog for these programs to operate on, so where will that
+data come from?
+In other words, in the find command, for instance, we’re going to write
+something like this, passing catalog as an argument to GetBook:
+That means we need to assign something to catalog. In the tests we solved
+this problem by calling a function that returns the catalog as a map, so let’s
+use the same idea here:
+And, for now, we can have that function return the exact same map we’re
+using in the tests. Here’s our updated version of list, for example:
+(Listing books/14)
+With this seemingly rather superficial change, we’ve added a lot of value to
+the books package. Not only can we run any number of tests reliably in
+parallel, even if they modify the contents of the catalog, we’ve also made it
+so that individual bookstores can now have different catalogs, in principle.
+book, ok := books.GetBook(catalog, ID)
+catalog := books.GetCatalog()
+func main() { 
+    catalog := books.GetCatalog() 
+    for _, book := range books.GetAllBooks(catalog) { 
+        fmt.Println(books.BookToString(book)) 
+    } 
+}In the next chapter, we’ll extend this idea a little further, turning both books
+and catalogs into objects that encapsulate both data and behaviour.
+Here’s what we know so far
+You’ve now mastered maps as a data structure, and that’s huge: practically
+every program you ever write in Go will use maps in one way or another.
+You know how to declare, query, modify, and pass around maps as data
+from one function to another.
+You also learned something about the scaling performance of different
+algorithms, such as linear search versus direct access, and the big-O
+notation we use to talk about them: O(N) versus O(1), for example. That
+means you understand when it makes sense to store data in a map instead of
+a slice, which is useful.
+And, importantly, you’re starting to get the hang of concurrent
+programming in Go, since you now know what data races are, why they’re
+a problem, and at least one way to avoid them. Great work! See you in the
+next chapter.
