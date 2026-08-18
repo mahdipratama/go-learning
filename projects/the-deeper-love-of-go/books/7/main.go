@@ -30,6 +30,6 @@ func main() {
 }
 
 func printBook(book Book) {
-	fmt.Println(book.title, "by", book.author, "-", book.copies, "copies")
+	fmt.Printf("%v by %v - %v copies\n", book.title, book.author, book.copies)
 
 }
