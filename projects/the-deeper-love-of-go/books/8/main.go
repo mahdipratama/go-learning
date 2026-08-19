@@ -15,7 +15,10 @@ func main() {
 }
 
 func BookToString(book Book) string {
-	return ""
+	// Printf = takes a format string with placeholders
+	// Spintf = same as Printf but doesn't print anything
+	result := fmt.Sprintf("%v by %v - %v copies", book.title, book.author, book.copies)
+	return result
 }
 
 func TestBookToString_FormatBookInfoAsString() {
@@ -25,9 +28,9 @@ func TestBookToString_FormatBookInfoAsString() {
 		copies: 5,
 	}
 
-	want := "Can't Hurt Me - 5 copies"
+	want := "Can't Hurt Me by David Goggins - 5 copies"
 	got := BookToString(input)
 	if want != got {
-		panic("BookToString: Wrong resul!")
+		panic("BookToString: Wrong result!")
 	}
 }
