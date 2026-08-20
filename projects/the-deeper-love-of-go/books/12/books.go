@@ -9,25 +9,23 @@ type Book struct {
 	ID     string
 }
 
-var catalog []Book
+var catalog = []Book{
+	{
+		Title:  "Can't Hurt Me",
+		Author: "David Goggins",
+		Copies: 5,
+		ID:     "ABC01",
+	},
+	{
+		Title:  "The Mountain is You",
+		Author: "Briana Weist",
+		Copies: 9,
+		ID:     "ABC02",
+	},
+}
 
 func GetAllBooks() []Book {
-
-	catalog = []Book{
-		{
-			Title:  "Can't Hurt Me",
-			Author: "David Goggins",
-			Copies: 5,
-		},
-		{
-			Title:  "The Mountain is You",
-			Author: "Briana Weist",
-			Copies: 9,
-		},
-	}
-
 	return catalog
-
 }
 
 func BookToString(book Book) string {

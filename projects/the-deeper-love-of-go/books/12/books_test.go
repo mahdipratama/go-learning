@@ -38,12 +38,21 @@ func TestGetBook_FindsBookInCatalogByID(t *testing.T) {
 		Copies: 5,
 	}
 
-	got, ok := books.GetBook("abc")
+	got, ok := books.GetBook("ABC01")
 	if !ok {
 		t.Fatal("Book not found")
 	}
 
 	if want != got {
 		t.Fatalf("want: %#v, got: %#v ", want, got)
+	}
+}
+
+func TestGetBook_ReturnsFalseWhenBookNotFound(t *testing.T) {
+	t.Parallel()
+
+	_, ok := books.GetBook("nonexistent ID")
+	if ok {
+		t.Fatal("want false for nonexistent ID, got true")
 	}
 }
