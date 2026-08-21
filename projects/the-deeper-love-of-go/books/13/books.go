@@ -17,14 +17,13 @@ var catalog = map[string]Book{
 	"ABC03": {
 		Title:  "Never Finished",
 		Author: "David Goggins",
-		Copies: 5,
+		Copies: 2,
 		ID:     "ABC03",
 	},
-
 	"ABC04": {
-		Title:  "How to Win Friends and Influence People",
-		Author: "Dale Carnegie",
-		Copies: 9,
+		Title:  "The Mountain is You",
+		Author: "Briana Weist",
+		Copies: 1,
 		ID:     "ABC04",
 	},
 }
@@ -39,12 +38,7 @@ func BookToString(book Book) string {
 }
 
 func GetBook(ID string) (Book, bool) {
-	// with map, range gives us each key and element pair in turn.
-	for _, book := range catalog {
-		if book.ID == ID {
-			return book, true
-		}
-	}
+	book, ok := catalog[ID]
 
-	return Book{}, false
+	return book, ok
 }
