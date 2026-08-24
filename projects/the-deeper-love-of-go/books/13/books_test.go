@@ -62,3 +62,28 @@ func TestGetBook_ReturnsFalseWhenBookNotFound(t *testing.T) {
 		t.Fatal("want false for nonexistent ID, got true")
 	}
 }
+
+func TestAddBook_AddGivenBookToCatalog(t *testing.T) {
+	t.Parallel()
+
+	// Precondition
+	_, ok := books.GetBook("ABC03")
+	if ok {
+		t.Fatal("Book already present")
+	}
+
+	// Action
+	books.AddBook(books.Book{
+		ID:     "ABC03",
+		Title:  "Never Finished",
+		Author: "David Goggins",
+		Copies: 2,
+	})
+
+	// Postcondition
+	// _, ok := books.GetBook("ABC03")
+	if !ok {
+		t.Fatalf("Added book not found")
+	}
+
+}
