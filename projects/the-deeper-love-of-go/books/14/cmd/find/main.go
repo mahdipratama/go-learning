@@ -15,6 +15,8 @@ func main() {
 	// Current Folder -> go run main.go [bookId]
 	// root -> go run cmd/find [bookId]
 
+	catalog := books.GetCatalog()
+
 	if len(os.Args) != 2 {
 		fmt.Println("Usage: find <BOOK ID>")
 		return
@@ -22,7 +24,7 @@ func main() {
 
 	ID := os.Args[1]
 
-	book, ok := books.GetBook(ID)
+	book, ok := books.GetBook(catalog, ID)
 	if !ok {
 		fmt.Println("Sorry, Couldn't find that book in the catalog")
 		return
@@ -30,4 +32,21 @@ func main() {
 
 	fmt.Println(books.BookToString(book))
 
+}
+
+func GetCataloq() map[string]books.Book {
+	return map[string]books.Book{
+		"ABC03": {
+			Title:  "Never Finished",
+			Author: "David Goggins",
+			Copies: 2,
+			ID:     "ABC03",
+		},
+		"ABC04": {
+			Title:  "The Mountain is You",
+			Author: "Briana Weist",
+			Copies: 1,
+			ID:     "ABC04",
+		},
+	}
 }

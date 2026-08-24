@@ -13,8 +13,6 @@ type Book struct {
 	ID     string
 }
 
-// var catalog
-
 func GetAllBooks(catalog map[string]Book) []Book {
 	return slices.Collect(maps.Values(catalog))
 }
@@ -32,4 +30,21 @@ func GetBook(catalog map[string]Book, ID string) (Book, bool) {
 
 func AddBook(catalog map[string]Book, book Book) {
 	catalog[book.ID] = book
+}
+
+func GetCatalog() map[string]Book {
+	return map[string]Book{
+		"ABC03": {
+			Title:  "Never Finished",
+			Author: "David Goggins",
+			Copies: 2,
+			ID:     "ABC03",
+		},
+		"ABC04": {
+			Title:  "The Mountain is You",
+			Author: "Briana Weist",
+			Copies: 1,
+			ID:     "ABC04",
+		},
+	}
 }
