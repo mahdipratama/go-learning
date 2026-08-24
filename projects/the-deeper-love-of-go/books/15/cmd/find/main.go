@@ -24,29 +24,12 @@ func main() {
 
 	ID := os.Args[1]
 
-	book, ok := books.GetBook(catalog, ID)
+	book, ok := catalog.GetBook(ID)
 	if !ok {
 		fmt.Println("Sorry, Couldn't find that book in the catalog")
 		return
 	}
 
-	fmt.Println(books.BookToString(book))
+	fmt.Println(book)
 
-}
-
-func GetCataloq() map[string]books.Book {
-	return map[string]books.Book{
-		"ABC03": {
-			Title:  "Never Finished",
-			Author: "David Goggins",
-			Copies: 2,
-			ID:     "ABC03",
-		},
-		"ABC04": {
-			Title:  "The Mountain is You",
-			Author: "Briana Weist",
-			Copies: 1,
-			ID:     "ABC04",
-		},
-	}
 }

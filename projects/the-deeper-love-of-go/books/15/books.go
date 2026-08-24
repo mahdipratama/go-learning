@@ -13,27 +13,29 @@ type Book struct {
 	ID     string
 }
 
-func GetAllBooks(catalog map[string]Book) []Book {
+type Catalog map[string]Book
+
+func (catalog Catalog) GetAllBooks() []Book {
 	return slices.Collect(maps.Values(catalog))
 }
 
-func BookToString(book Book) string {
+func (book Book) String() string {
 	result := fmt.Sprintf("%v by %v (copies: %v)", book.Title, book.Author, book.Copies)
 	return result
 }
 
-func GetBook(catalog map[string]Book, ID string) (Book, bool) {
+func (catalog Catalog) GetBook(ID string) (Book, bool) {
 	book, ok := catalog[ID]
 
 	return book, ok
 }
 
-func AddBook(catalog map[string]Book, book Book) {
+func (catalog Catalog) AddBook(book Book) {
 	catalog[book.ID] = book
 }
 
-func GetCatalog() map[string]Book {
-	return map[string]Book{
+func GetCatalog() Catalog {
+	return Catalog{
 		"ABC03": {
 			Title:  "Never Finished",
 			Author: "David Goggins",

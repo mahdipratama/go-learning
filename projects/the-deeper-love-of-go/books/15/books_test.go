@@ -8,7 +8,7 @@ import (
 )
 
 func TestGetAllBooks_ReturnsAllBooks(t *testing.T) {
-	catalog := getTestCataloq()
+	catalog := getTestCatalog()
 
 	want := []books.Book{
 		{
@@ -25,7 +25,7 @@ func TestGetAllBooks_ReturnsAllBooks(t *testing.T) {
 		},
 	}
 
-	got := books.GetAllBooks(catalog)
+	got := catalog.GetAllBooks()
 	slices.SortFunc(got, func(a, b books.Book) int {
 		return cmp.Compare(a.Author, b.Author)
 	})
@@ -39,7 +39,7 @@ func TestGetBook_FindsBookInCatalogByID(t *testing.T) {
 	// Running all the test at the same time
 	t.Parallel()
 
-	catalog := getTestCataloq()
+	catalog := getTestCatalog()
 
 	want := books.Book{
 		Title:  "Never Finished",
@@ -48,7 +48,7 @@ func TestGetBook_FindsBookInCatalogByID(t *testing.T) {
 		ID:     "ABC03",
 	}
 
-	got, ok := books.GetBook(catalog, "ABC03")
+	got, ok := catalog.GetBook("ABC03")
 	if !ok {
 		t.Fatal("Book not found")
 	}
@@ -61,9 +61,9 @@ func TestGetBook_FindsBookInCatalogByID(t *testing.T) {
 func TestGetBook_ReturnsFalseWhenBookNotFound(t *testing.T) {
 	t.Parallel()
 
-	catalog := getTestCataloq()
+	catalog := getTestCatalog()
 
-	_, ok := books.GetBook(catalog, "nonexistent ID")
+	_, ok := catalog.GetBook("nonexistent ID")
 	if ok {
 		t.Fatal("want false for nonexistent ID, got true")
 	}
@@ -72,32 +72,32 @@ func TestGetBook_ReturnsFalseWhenBookNotFound(t *testing.T) {
 func TestAddBook_AddGivenBookToCatalog(t *testing.T) {
 	t.Parallel()
 
-	catalog := getTestCataloq()
+	catalog := getTestCatalog()
 
 	// Precondition
-	_, ok := books.GetBook(catalog, "ABC03")
+	_, ok := catalog.GetBook("ABC05")
 	if ok {
 		t.Fatal("Book already present")
 	}
 
 	// Action
-	books.AddBook(catalog, books.Book{
-		ID:     "ABC03",
-		Title:  "Never Finished",
-		Author: "David Goggins",
+	catalog.AddBook(books.Book{
+		ID:     "ABC05",
+		Title:  "Atomic Habit",
+		Author: "James Clear",
 		Copies: 2,
 	})
 
 	// Postcondition
-	// _, ok := books.GetBook(catalog, "ABC03")
+	_, ok = catalog.GetBook("ABC05")
 	if !ok {
 		t.Fatalf("Added book not found")
 	}
 
 }
 
-func getTestCataloq() map[string]books.Book {
-	return map[string]books.Book{
+func getTestCatalog() books.Catalog {
+	return books.Catalog{
 		"ABC03": {
 			Title:  "Never Finished",
 			Author: "David Goggins",
