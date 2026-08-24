@@ -87,3 +87,20 @@ func TestAddBook_AddGivenBookToCatalog(t *testing.T) {
 	}
 
 }
+
+func getTestCataloq() map[string]books.Book {
+	return map[string]books.Book{
+		"ABC03": {
+			Title:  "Never Finished",
+			Author: "David Goggins",
+			Copies: 2,
+			ID:     "ABC03",
+		},
+		"ABC04": {
+			Title:  "The Mountain is You",
+			Author: "Briana Weist",
+			Copies: 1,
+			ID:     "ABC04",
+		},
+	}
+}
