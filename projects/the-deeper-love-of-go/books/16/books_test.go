@@ -100,7 +100,7 @@ func TestSetCopies_SetsNumberOfCopiesToGivenValue(t *testing.T) {
 	t.Parallel()
 	book := books.Book{
 		Copies: 5,
-	}	
+	}
 
 	book.SetCopies(12)
 	if book.Copies != 12 {
