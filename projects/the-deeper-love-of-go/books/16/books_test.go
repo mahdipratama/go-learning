@@ -102,11 +102,26 @@ func TestSetCopies_SetsNumberOfCopiesToGivenValue(t *testing.T) {
 		Copies: 5,
 	}
 
-	book.SetCopies(12)
+	err := book.SetCopies(12)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	if book.Copies != 12 {
 		t.Errorf("want 12 copies, got %d", book.Copies)
 	}
 
+}
+
+func TestSetCopies_ReturnErrorIfCopiesNegative(t *testing.T) {
+	t.Parallel()
+
+	book := books.Book{}
+
+	err := book.SetCopies(-1)
+	if err == nil {
+		t.Fatalf("Want error for negative copies, got: nil")
+	}
 }
 
 func getTestCatalog() books.Catalog {

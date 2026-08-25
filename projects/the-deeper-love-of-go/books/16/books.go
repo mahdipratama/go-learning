@@ -34,12 +34,19 @@ func (catalog Catalog) AddBook(book Book) {
 	catalog[book.ID] = book
 }
 
-func (book *Book) SetCopies(copies int) {
+func (book *Book) SetCopies(copies int) error {
 	// Below, is a shallow copy: not exactly updating the book.Copies
 	// fmt.Println("Before update book.Copies = ", book.Copies)
 	// book.Copies = copies
 	// fmt.Println("After update book.Copies = ", book.Copies)
+
+	if copies < 0 {
+		return fmt.Errorf("negative number of copies: %d", copies)
+	}
+
 	book.Copies = copies
+
+	return nil
 
 }
 
