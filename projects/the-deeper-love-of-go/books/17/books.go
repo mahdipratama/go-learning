@@ -50,6 +50,10 @@ func (book *Book) SetCopies(copies int) error {
 
 }
 
+func OpenCatalog(path string) (Catalog, error) {
+	return Catalog{}, nil
+}
+
 func GetCatalog() Catalog {
 	return Catalog{
 		"ABC03": {

@@ -35,6 +35,37 @@ func TestGetAllBooks_ReturnsAllBooks(t *testing.T) {
 	}
 }
 
+func TestOpenCatalog_LoadsCatalogDataFromFile(t *testing.T) {
+	catalog, err := books.OpenCatalog("testdata/catalog")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want := []books.Book{
+		{
+			Title:  "The Mountain is You",
+			Author: "Briana Weist",
+			Copies: 1,
+			ID:     "ABC04",
+		},
+		{
+			Title:  "Never Finished",
+			Author: "David Goggins",
+			Copies: 2,
+			ID:     "ABC03",
+		},
+	}
+
+	got := catalog.GetAllBooks()
+	slices.SortFunc(got, func(a, b books.Book) int {
+		return cmp.Compare(a.Author, b.Author)
+	})
+
+	if !slices.Equal(want, got) {
+		t.Fatalf("want %#v, got %#v", want, got)
+	}
+}
+
 func TestGetBook_FindsBookInCatalogByID(t *testing.T) {
 	// Running all the test at the same time
 	t.Parallel()
