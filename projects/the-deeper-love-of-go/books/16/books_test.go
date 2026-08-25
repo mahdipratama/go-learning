@@ -96,6 +96,19 @@ func TestAddBook_AddGivenBookToCatalog(t *testing.T) {
 
 }
 
+func TestSetCopies_SetsNumberOfCopiesToGivenValue(t *testing.T) {
+	t.Parallel()
+	book := books.Book{
+		Copies: 5,
+	}	
+
+	book.SetCopies(12)
+	if book.Copies != 12 {
+		t.Errorf("want 12 copies, got %d", book.Copies)
+	}
+
+}
+
 func getTestCatalog() books.Catalog {
 	return books.Catalog{
 		"ABC03": {

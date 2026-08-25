@@ -34,6 +34,13 @@ func (catalog Catalog) AddBook(book Book) {
 	catalog[book.ID] = book
 }
 
+func (book Book) SetCopies(copies int) {
+	// Below, is a shallow copy: not exactly updating the book.Copies
+	fmt.Println("Before update book.Copies = ", book.Copies)
+	book.Copies = copies
+	fmt.Println("After update book.Copies = ", book.Copies)
+}
+
 func GetCatalog() Catalog {
 	return Catalog{
 		"ABC03": {
