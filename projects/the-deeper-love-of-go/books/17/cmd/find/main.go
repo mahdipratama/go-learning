@@ -13,12 +13,16 @@ func main() {
 
 	// HOW TO USE:
 	// Current Folder -> go run main.go [bookId]
-	// root -> go run cmd/find [bookId]
-
-	catalog := books.GetCatalog()
+	// root -> go run ./cmd/find [bookId]
 
 	if len(os.Args) != 2 {
 		fmt.Println("Usage: find <BOOK ID>")
+		return
+	}
+
+	catalog, err := books.OpenCatalog("testdata/catalog")
+	if err != nil {
+		fmt.Printf("Opening catalog: %v \n", err)
 		return
 	}
 
