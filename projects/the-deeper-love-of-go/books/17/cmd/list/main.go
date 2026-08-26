@@ -7,8 +7,6 @@ import (
 
 func main() {
 
-	// catalog := books.GetCatalog()
-
 	catalog, err := books.OpenCatalog("testdata/catalog")
 	if err != nil {
 		fmt.Printf("Opening catalog: %v \n", err)

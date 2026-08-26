@@ -68,20 +68,3 @@ func OpenCatalog(path string) (Catalog, error) {
 
 	return catalog, nil
 }
-
-func GetCatalog() Catalog {
-	return Catalog{
-		"ABC03": {
-			Title:  "Never Finished",
-			Author: "David Goggins",
-			Copies: 2,
-			ID:     "ABC03",
-		},
-		"ABC04": {
-			Title:  "The Mountain is You",
-			Author: "Briana Weist",
-			Copies: 1,
-			ID:     "ABC04",
-		},
-	}
-}
