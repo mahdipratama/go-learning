@@ -10,29 +10,9 @@ import (
 func TestGetAllBooks_ReturnsAllBooks(t *testing.T) {
 	catalog := getTestCatalog()
 
-	want := []books.Book{
-		{
-			Title:  "The Mountain is You",
-			Author: "Briana Weist",
-			Copies: 1,
-			ID:     "ABC04",
-		},
-		{
-			Title:  "Never Finished",
-			Author: "David Goggins",
-			Copies: 2,
-			ID:     "ABC03",
-		},
-	}
+	bookList := catalog.GetAllBooks()
+	assertTestBooks(t, bookList)
 
-	got := catalog.GetAllBooks()
-	slices.SortFunc(got, func(a, b books.Book) int {
-		return cmp.Compare(a.Author, b.Author)
-	})
-
-	if !slices.Equal(want, got) {
-		t.Fatalf("want %#v, got %#v", want, got)
-	}
 }
 
 func TestOpenCatalog_LoadsCatalogDataFromFile(t *testing.T) {
@@ -41,29 +21,27 @@ func TestOpenCatalog_LoadsCatalogDataFromFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	want := []books.Book{
-		{
-			Title:  "The Mountain is You",
-			Author: "Briana Weist",
-			Copies: 1,
-			ID:     "ABC04",
-		},
-		{
-			Title:  "Never Finished",
-			Author: "David Goggins",
-			Copies: 2,
-			ID:     "ABC03",
-		},
+	bookList := catalog.GetAllBooks()
+	assertTestBooks(t, bookList)
+}
+
+func TestSyncWriteCatalogDataToFile(t *testing.T) {
+	t.Parallel()
+
+	catalog := getTestCatalog()
+	err := catalog.Sync("testdata/catalog.new")
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	got := catalog.GetAllBooks()
-	slices.SortFunc(got, func(a, b books.Book) int {
-		return cmp.Compare(a.Author, b.Author)
-	})
-
-	if !slices.Equal(want, got) {
-		t.Fatalf("want %#v, got %#v", want, got)
+	newCatalog, err := books.OpenCatalog("testdata/catalog.new")
+	if err != nil {
+		t.Fatal(err)
 	}
+
+	bookList := newCatalog.GetAllBooks()
+	assertTestBooks(t, bookList)
+
 }
 
 func TestGetBook_FindsBookInCatalogByID(t *testing.T) {
@@ -152,6 +130,33 @@ func TestSetCopies_ReturnErrorIfCopiesNegative(t *testing.T) {
 	err := book.SetCopies(-1)
 	if err == nil {
 		t.Fatalf("Want error for negative copies, got: nil")
+	}
+}
+
+func assertTestBooks(t *testing.T, got []books.Book) {
+	t.Helper()
+
+	want := []books.Book{
+		{
+			Title:  "The Mountain is You",
+			Author: "Briana Weist",
+			Copies: 1,
+			ID:     "ABC04",
+		},
+		{
+			Title:  "Never Finished",
+			Author: "David Goggins",
+			Copies: 2,
+			ID:     "ABC03",
+		},
+	}
+
+	slices.SortFunc(got, func(a, b books.Book) int {
+		return cmp.Compare(a.Author, b.Author)
+	})
+
+	if !slices.Equal(want, got) {
+		t.Fatalf("want %#v, got %#v", want, got)
 	}
 }
 
