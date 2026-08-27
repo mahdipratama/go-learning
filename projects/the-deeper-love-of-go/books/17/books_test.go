@@ -15,21 +15,12 @@ func TestGetAllBooks_ReturnsAllBooks(t *testing.T) {
 
 }
 
-func TestOpenCatalog_LoadsCatalogDataFromFile(t *testing.T) {
-	catalog, err := books.OpenCatalog("testdata/catalog")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	bookList := catalog.GetAllBooks()
-	assertTestBooks(t, bookList)
-}
-
-func TestSyncWriteCatalogDataToFile(t *testing.T) {
+func TestOpenCatalog_ReadSameDataWrittenBySync(t *testing.T) {
 	t.Parallel()
 
 	catalog := getTestCatalog()
-	err := catalog.Sync("testdata/catalog.new")
+	path := t.TempDir() + "/catalog"
+	err := catalog.Sync(path)
 	if err != nil {
 		t.Fatal(err)
 	}
