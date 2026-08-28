@@ -40,8 +40,15 @@ func (catalog Catalog) GetBook(ID string) (Book, bool) {
 	return book, ok
 }
 
-func (catalog Catalog) AddBook(book Book) {
+func (catalog Catalog) AddBook(book Book) error {
+	_, ok := catalog[book.ID]
+	if ok {
+		return fmt.Errorf("ID: %q already exists", book.ID)
+	}
+
 	catalog[book.ID] = book
+
+	return nil
 }
 
 func (catalog Catalog) SetCopies(ID string, copies int) error {

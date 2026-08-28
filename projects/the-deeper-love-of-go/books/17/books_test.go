@@ -82,22 +82,47 @@ func TestAddBook_AddGivenBookToCatalog(t *testing.T) {
 	}
 
 	// Action
-	catalog.AddBook(books.Book{
+	err := catalog.AddBook(books.Book{
 		ID:     "ABC05",
 		Title:  "Atomic Habit",
 		Author: "James Clear",
 		Copies: 2,
 	})
 
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// Postcondition
 	_, ok = catalog.GetBook("ABC05")
 	if !ok {
 		t.Fatalf("Added book not found")
 	}
-
 }
 
-func TestSetCopies_OnCatalogModifiesSpecifedBook(t *testing.T) {
+func TestAddBook_ReturnsErrorIfIDExists(t *testing.T) {
+	t.Parallel()
+
+	catalog := getTestCatalog()
+
+	_, ok := catalog.GetBook("ABC04")
+	if !ok {
+		t.Fatal("Book not present")
+	}
+
+	err := catalog.AddBook(books.Book{
+		ID:     "ABC04",
+		Title:  "Atomic Habit",
+		Author: "James Clear",
+		Copies: 2,
+	})
+
+	if err == nil {
+		t.Fatalf("want error for duplicate ID, got nil")
+	}
+}
+
+func TestSetCopies_OnCatalogModifiesSpecifiedBook(t *testing.T) {
 	t.Parallel()
 	catalog := getTestCatalog()
 
