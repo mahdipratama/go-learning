@@ -26,6 +26,14 @@ func (book Book) String() string {
 	return result
 }
 
+func (book *Book) SetCopies(copies int) error {
+	if copies < 0 {
+		return fmt.Errorf("negative number of copies: %d", copies)
+	}
+	book.Copies = copies
+	return nil
+}
+
 func (catalog Catalog) GetBook(ID string) (Book, bool) {
 	book, ok := catalog[ID]
 
@@ -36,17 +44,19 @@ func (catalog Catalog) AddBook(book Book) {
 	catalog[book.ID] = book
 }
 
-func (book *Book) SetCopies(copies int) error {
-	// Below, is a shallow copy: not exactly updating the book.Copies
-	// fmt.Println("Before update book.Copies = ", book.Copies)
-	// book.Copies = copies
-	// fmt.Println("After update book.Copies = ", book.Copies)
+func (catalog Catalog) SetCopies(ID string, copies int) error {
 
-	if copies < 0 {
-		return fmt.Errorf("negative number of copies: %d", copies)
+	book, ok := catalog.GetBook(ID)
+	if !ok {
+		return fmt.Errorf("ID: %q not found", ID)
 	}
 
-	book.Copies = copies
+	err := book.SetCopies(copies)
+	if err != nil {
+		return err
+	}
+
+	catalog[ID] = book
 
 	return nil
 

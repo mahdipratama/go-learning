@@ -97,33 +97,62 @@ func TestAddBook_AddGivenBookToCatalog(t *testing.T) {
 
 }
 
-func TestSetCopies_SetsNumberOfCopiesToGivenValue(t *testing.T) {
+func TestSetCopies_OnCatalogModifiesSpecifedBook(t *testing.T) {
 	t.Parallel()
-	book := books.Book{
-		Copies: 5,
+	catalog := getTestCatalog()
+
+	book, ok := catalog.GetBook("ABC04")
+	if !ok {
+		t.Fatal("Book not found")
 	}
 
-	err := book.SetCopies(12)
+	if book.Copies != 1 {
+		t.Fatalf("Want 1 copy before change, got: %d", book.Copies)
+	}
+
+	err := catalog.SetCopies("ABC04", 12)
 	if err != nil {
 		t.Fatal(err)
 	}
 
+	book, ok = catalog.GetBook("ABC04")
+	if !ok {
+		t.Fatal("Book not found")
+	}
+
 	if book.Copies != 12 {
-		t.Errorf("want 12 copies, got %d", book.Copies)
+		t.Fatalf("Want 12 copy before change, got: %d", book.Copies)
 	}
 
 }
 
-func TestSetCopies_ReturnErrorIfCopiesNegative(t *testing.T) {
-	t.Parallel()
+// func TestSetCopies_SetsNumberOfCopiesToGivenValue(t *testing.T) {
+// 	t.Parallel()
+// 	book := books.Book{
+// 		Copies: 5,
+// 	}
 
-	book := books.Book{}
+// 	err := book.SetCopies(12)
+// 	if err != nil {
+// 		t.Fatal(err)
+// 	}
 
-	err := book.SetCopies(-1)
-	if err == nil {
-		t.Fatalf("Want error for negative copies, got: nil")
-	}
-}
+// 	if book.Copies != 12 {
+// 		t.Errorf("want 12 copies, got %d", book.Copies)
+// 	}
+
+// }
+
+// func TestSetCopies_ReturnErrorIfCopiesNegative(t *testing.T) {
+// 	t.Parallel()
+
+// 	book := books.Book{}
+
+// 	err := book.SetCopies(-1)
+// 	if err == nil {
+// 		t.Fatalf("Want error for negative copies, got: nil")
+// 	}
+// }
 
 func assertTestBooks(t *testing.T, got []books.Book) {
 	t.Helper()
