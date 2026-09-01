@@ -6,6 +6,7 @@ import (
 	"maps"
 	"os"
 	"slices"
+	"sync"
 )
 
 type Book struct {
@@ -15,7 +16,12 @@ type Book struct {
 	ID     string
 }
 
-type Catalog map[string]Book
+type Catalog struct {
+	// Every method that accesses the catalog now needs to be mutex-aware
+	// need to get the lock before trying to read the map data
+	mu   *sync.RWMutex
+	data map[string]Book
+}
 
 func (catalog Catalog) GetAllBooks() []Book {
 	return slices.Collect(maps.Values(catalog))
