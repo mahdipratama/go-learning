@@ -23,8 +23,8 @@ type Catalog struct {
 	data map[string]Book
 }
 
-func (catalog Catalog) GetAllBooks() []Book {
-	return slices.Collect(maps.Values(catalog))
+func (catalog *Catalog) GetAllBooks() []Book {
+	return slices.Collect(maps.Values(catalog.data))
 }
 
 func (book Book) String() string {
@@ -40,8 +40,8 @@ func (book *Book) SetCopies(copies int) error {
 	return nil
 }
 
-func (catalog Catalog) GetCopies(ID string) (int, error) {
-	book, ok := catalog[ID]
+func (catalog *Catalog) GetCopies(ID string) (int, error) {
+	book, ok := catalog.data[ID]
 	if !ok {
 		return 0, fmt.Errorf("ID %q not found", ID)
 	}
@@ -49,24 +49,24 @@ func (catalog Catalog) GetCopies(ID string) (int, error) {
 	return book.Copies, nil
 }
 
-func (catalog Catalog) GetBook(ID string) (Book, bool) {
-	book, ok := catalog[ID]
+func (catalog *Catalog) GetBook(ID string) (Book, bool) {
+	book, ok := catalog.data[ID]
 
 	return book, ok
 }
 
-func (catalog Catalog) AddBook(book Book) error {
-	_, ok := catalog[book.ID]
+func (catalog *Catalog) AddBook(book Book) error {
+	_, ok := catalog.data[book.ID]
 	if ok {
 		return fmt.Errorf("ID: %q already exists", book.ID)
 	}
 
-	catalog[book.ID] = book
+	catalog.data[book.ID] = book
 
 	return nil
 }
 
-func (catalog Catalog) SetCopies(ID string, copies int) error {
+func (catalog *Catalog) SetCopies(ID string, copies int) error {
 
 	book, ok := catalog.GetBook(ID)
 	if !ok {
@@ -78,37 +78,40 @@ func (catalog Catalog) SetCopies(ID string, copies int) error {
 		return err
 	}
 
-	catalog[ID] = book
+	catalog.data[ID] = book
 
 	return nil
 
 }
 
-func OpenCatalog(path string) (Catalog, error) {
+func OpenCatalog(path string) (*Catalog, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
 
 	defer file.Close()
-	catalog := Catalog{}
-	err = json.NewDecoder(file).Decode(&catalog)
+	catalog := Catalog{
+		mu:   &sync.RWMutex{},
+		data: map[string]Book{},
+	}
+	err = json.NewDecoder(file).Decode(&catalog.data)
 
 	if err != nil {
 		return nil, err
 	}
 
-	return catalog, nil
+	return &catalog, nil
 }
 
-func (catalog Catalog) Sync(path string) error {
+func (catalog *Catalog) Sync(path string) error {
 	file, err := os.Create(path)
 	if err != nil {
 		return err
 	}
 
 	defer file.Close()
-	err = json.NewEncoder(file).Encode(catalog)
+	err = json.NewEncoder(file).Encode(catalog.data)
 	if err != nil {
 		return err
 	}
