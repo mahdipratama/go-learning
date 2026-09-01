@@ -34,6 +34,15 @@ func (book *Book) SetCopies(copies int) error {
 	return nil
 }
 
+func (catalog Catalog) GetCopies(ID string) (int, error) {
+	book, ok := catalog[ID]
+	if !ok {
+		return 0, fmt.Errorf("ID %q not found", ID)
+	}
+
+	return book.Copies, nil
+}
+
 func (catalog Catalog) GetBook(ID string) (Book, bool) {
 	book, ok := catalog[ID]
 
