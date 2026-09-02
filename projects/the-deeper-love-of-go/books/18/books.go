@@ -25,6 +25,9 @@ type Catalog struct {
 }
 
 func (catalog *Catalog) GetAllBooks() []Book {
+	catalog.mu.RLock()
+	defer catalog.mu.RUnlock()
+
 	return slices.Collect(maps.Values(catalog.data))
 }
 
@@ -42,6 +45,9 @@ func (book *Book) SetCopies(copies int) error {
 }
 
 func (catalog *Catalog) GetCopies(ID string) (int, error) {
+	catalog.mu.RLock()
+	defer catalog.mu.RUnlock()
+
 	book, ok := catalog.data[ID]
 	if !ok {
 		return 0, fmt.Errorf("ID %q not found", ID)
@@ -51,12 +57,18 @@ func (catalog *Catalog) GetCopies(ID string) (int, error) {
 }
 
 func (catalog *Catalog) GetBook(ID string) (Book, bool) {
+	catalog.mu.RLock()
+	defer catalog.mu.RUnlock()
+
 	book, ok := catalog.data[ID]
 
 	return book, ok
 }
 
 func (catalog *Catalog) AddBook(book Book) error {
+	catalog.mu.Lock()
+	defer catalog.mu.Unlock()
+
 	_, ok := catalog.data[book.ID]
 	if ok {
 		return fmt.Errorf("ID: %q already exists", book.ID)
@@ -68,6 +80,8 @@ func (catalog *Catalog) AddBook(book Book) error {
 }
 
 func (catalog *Catalog) SetCopies(ID string, copies int) error {
+	catalog.mu.Lock()
+	defer catalog.mu.Unlock()
 
 	book, ok := catalog.GetBook(ID)
 	if !ok {
@@ -112,6 +126,9 @@ func OpenCatalog(path string) (*Catalog, error) {
 }
 
 func (catalog *Catalog) Sync() error {
+	catalog.mu.RLock()
+	defer catalog.mu.RUnlock()
+
 	file, err := os.Create(catalog.Path)
 	if err != nil {
 		return err
