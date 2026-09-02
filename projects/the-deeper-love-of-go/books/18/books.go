@@ -83,7 +83,7 @@ func (catalog *Catalog) SetCopies(ID string, copies int) error {
 	catalog.mu.Lock()
 	defer catalog.mu.Unlock()
 
-	book, ok := catalog.GetBook(ID)
+	book, ok := catalog.data[ID]
 	if !ok {
 		return fmt.Errorf("ID: %q not found", ID)
 	}
