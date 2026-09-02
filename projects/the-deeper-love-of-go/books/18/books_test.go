@@ -20,13 +20,13 @@ func TestOpenCatalog_ReadSameDataWrittenBySync(t *testing.T) {
 
 	catalog := getTestCatalog()
 
-	// path := t.TempDir() + "/catalog"
+	catalog.Path = t.TempDir() + "/catalog"
 	err := catalog.Sync()
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	newCatalog, err := books.OpenCatalog("testdata/catalog.new")
+	newCatalog, err := books.OpenCatalog(catalog.Path)
 	if err != nil {
 		t.Fatal(err)
 	}
