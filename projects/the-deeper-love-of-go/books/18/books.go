@@ -21,6 +21,7 @@ type Catalog struct {
 	// need to get the lock before trying to read the map data
 	mu   *sync.RWMutex
 	data map[string]Book
+	Path string
 }
 
 func (catalog *Catalog) GetAllBooks() []Book {
@@ -101,11 +102,13 @@ func OpenCatalog(path string) (*Catalog, error) {
 		return nil, err
 	}
 
+	catalog.Path = path // Remember where you came from
+
 	return &catalog, nil
 }
 
-func (catalog *Catalog) Sync(path string) error {
-	file, err := os.Create(path)
+func (catalog *Catalog) Sync() error {
+	file, err := os.Create(catalog.Path)
 	if err != nil {
 		return err
 	}
