@@ -85,6 +85,13 @@ func (catalog *Catalog) SetCopies(ID string, copies int) error {
 
 }
 
+func NewCatalog() *Catalog {
+	return &Catalog{
+		mu:   &sync.RWMutex{},
+		data: map[string]Book{},
+	}
+}
+
 func OpenCatalog(path string) (*Catalog, error) {
 	file, err := os.Open(path)
 	if err != nil {
@@ -92,10 +99,7 @@ func OpenCatalog(path string) (*Catalog, error) {
 	}
 
 	defer file.Close()
-	catalog := Catalog{
-		mu:   &sync.RWMutex{},
-		data: map[string]Book{},
-	}
+	catalog := NewCatalog()
 	err = json.NewDecoder(file).Decode(&catalog.data)
 
 	if err != nil {
@@ -104,7 +108,7 @@ func OpenCatalog(path string) (*Catalog, error) {
 
 	catalog.Path = path // Remember where you came from
 
-	return &catalog, nil
+	return catalog, nil
 }
 
 func (catalog *Catalog) Sync() error {

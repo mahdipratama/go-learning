@@ -20,8 +20,8 @@ func TestOpenCatalog_ReadSameDataWrittenBySync(t *testing.T) {
 
 	catalog := getTestCatalog()
 
-	path := t.TempDir() + "/catalog"
-	err := catalog.Sync(path)
+	// path := t.TempDir() + "/catalog"
+	err := catalog.Sync()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -228,19 +228,40 @@ func assertTestBooks(t *testing.T, got []books.Book) {
 	}
 }
 
-func getTestCatalog() books.Catalog {
-	return books.Catalog{
-		"ABC03": {
-			Title:  "Never Finished",
-			Author: "David Goggins",
-			Copies: 2,
-			ID:     "ABC03",
-		},
-		"ABC04": {
-			Title:  "The Mountain is You",
-			Author: "Briana Weist",
-			Copies: 1,
-			ID:     "ABC04",
-		},
+func TestNewCatalog_GetEmptyCatalog(t *testing.T) {
+	t.Parallel()
+	catalog := books.NewCatalog()
+	books := catalog.GetAllBooks()
+	if len(books) > 0 {
+		t.Errorf("want empty catalog, got %v", books)
 	}
+
+}
+
+func getTestCatalog() *books.Catalog {
+	catalog := books.NewCatalog()
+
+	err := catalog.AddBook(books.Book{
+		Title:  "Never Finished",
+		Author: "David Goggins",
+		Copies: 2,
+		ID:     "ABC03",
+	})
+
+	if err != nil {
+		panic(err)
+	}
+
+	err = catalog.AddBook(books.Book{
+		Title:  "The Mountain is You",
+		Author: "Briana Weist",
+		Copies: 1,
+		ID:     "ABC04",
+	})
+
+	if err != nil {
+		panic(err)
+	}
+
+	return catalog
 }
