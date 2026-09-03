@@ -2,18 +2,39 @@ package main
 
 import (
 	"books"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 )
 
 func main() {
-
-	catalog, err := books.OpenCatalog("testdata/catalog")
+	resp, err := http.Get("http://localhost:3000")
 	if err != nil {
-		fmt.Printf("Opening catalog: %v \n", err)
+		fmt.Println(err)
 		return
 	}
 
-	for _, book := range catalog.GetAllBooks() {
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		fmt.Printf("Unexpected status %d", resp.StatusCode)
+		return
+	}
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	bookList := []books.Book{}
+	err = json.Unmarshal(data, &bookList)
+	if err != nil {
+		fmt.Printf("%v in %q ", err, data)
+		return
+	}
+
+	for _, book := range bookList {
 		fmt.Println(book)
 	}
 }
