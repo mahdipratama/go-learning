@@ -3,6 +3,8 @@ package books_test
 import (
 	"books"
 	"cmp"
+	"encoding/json"
+	"net/http"
 	"slices"
 	"testing"
 )
@@ -201,33 +203,6 @@ func TestSetCopies_IsRaceFree(t *testing.T) {
 	}
 }
 
-func assertTestBooks(t *testing.T, got []books.Book) {
-	t.Helper()
-
-	want := []books.Book{
-		{
-			Title:  "The Mountain is You",
-			Author: "Briana Weist",
-			Copies: 1,
-			ID:     "ABC04",
-		},
-		{
-			Title:  "Never Finished",
-			Author: "David Goggins",
-			Copies: 2,
-			ID:     "ABC03",
-		},
-	}
-
-	slices.SortFunc(got, func(a, b books.Book) int {
-		return cmp.Compare(a.Author, b.Author)
-	})
-
-	if !slices.Equal(want, got) {
-		t.Fatalf("want %#v, got %#v", want, got)
-	}
-}
-
 func TestNewCatalog_GetEmptyCatalog(t *testing.T) {
 	t.Parallel()
 	catalog := books.NewCatalog()
@@ -236,6 +211,37 @@ func TestNewCatalog_GetEmptyCatalog(t *testing.T) {
 		t.Errorf("want empty catalog, got %v", books)
 	}
 
+}
+
+func TestServer_ListAllBooks(t *testing.T) {
+	catalog := getTestCatalog()
+	catalog.Path = t.TempDir() + "/catalog"
+
+	go func() {
+		err := books.ListenAndServe(":3000", catalog)
+		if err != nil {
+			panic(err)
+		}
+	}()
+
+	resp, err := http.Get("http://localhost:3000/")
+	if err != nil {
+		panic(err)
+	}
+
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("unexpected status %d", resp.StatusCode)
+	}
+
+	bookList := []books.Book{}
+
+	err = json.NewDecoder(resp.Body).Decode(&bookList)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	assertTestBooks(t, bookList)
 }
 
 func getTestCatalog() *books.Catalog {
@@ -264,4 +270,31 @@ func getTestCatalog() *books.Catalog {
 	}
 
 	return catalog
+}
+
+func assertTestBooks(t *testing.T, got []books.Book) {
+	t.Helper()
+
+	want := []books.Book{
+		{
+			Title:  "The Mountain is You",
+			Author: "Briana Weist",
+			Copies: 1,
+			ID:     "ABC04",
+		},
+		{
+			Title:  "Never Finished",
+			Author: "David Goggins",
+			Copies: 2,
+			ID:     "ABC03",
+		},
+	}
+
+	slices.SortFunc(got, func(a, b books.Book) int {
+		return cmp.Compare(a.Author, b.Author)
+	})
+
+	if !slices.Equal(want, got) {
+		t.Fatalf("want %#v, got %#v", want, got)
+	}
 }
