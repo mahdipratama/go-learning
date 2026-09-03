@@ -4,6 +4,7 @@ import (
 	"books"
 	"cmp"
 	"encoding/json"
+	"io"
 	"net/http"
 	"slices"
 	"testing"
@@ -236,9 +237,18 @@ func TestServer_ListAllBooks(t *testing.T) {
 
 	bookList := []books.Book{}
 
-	err = json.NewDecoder(resp.Body).Decode(&bookList)
+	// err = json.NewDecoder(resp.Body).Decode(&bookList)
+	// if err != nil {
+	// 	t.Fatal(err)
+	// }
+
+	data, err := io.ReadAll(resp.Body)
 	if err != nil {
 		t.Fatal(err)
+	}
+	err = json.Unmarshal(data, &bookList)
+	if err != nil {
+		t.Fatalf("%v in %q", err, data)
 	}
 
 	assertTestBooks(t, bookList)
