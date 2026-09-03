@@ -218,15 +218,16 @@ func TestNewCatalog_GetEmptyCatalog(t *testing.T) {
 func TestServer_ListAllBooks(t *testing.T) {
 	catalog := getTestCatalog()
 	catalog.Path = t.TempDir() + "/catalog"
+	addr := randomLocalAddr(t)
 
 	go func() {
-		err := books.ListenAndServe(":3000", catalog)
+		err := books.ListenAndServe(addr, catalog)
 		if err != nil {
 			panic(err)
 		}
 	}()
 
-	resp, err := http.Get("http://localhost:3000/")
+	resp, err := http.Get("http://" + addr)
 	if err != nil {
 		panic(err)
 	}
