@@ -5,6 +5,7 @@ import (
 	"cmp"
 	"encoding/json"
 	"io"
+	"net"
 	"net/http"
 	"slices"
 	"testing"
@@ -252,6 +253,18 @@ func TestServer_ListAllBooks(t *testing.T) {
 	}
 
 	assertTestBooks(t, bookList)
+}
+
+func randomLocalAddr(t *testing.T) string {
+	t.Helper()
+
+	l, err := net.Listen("tcp", ":0")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer l.Close()
+	return l.Addr().String()
 }
 
 func getTestCatalog() *books.Catalog {
