@@ -303,6 +303,34 @@ func TestServer_FindsBookByID(t *testing.T) {
 
 }
 
+func TestFindReturnsNotFoundWhenBookNotFound(t *testing.T) {
+	t.Parallel()
+
+	addr := randomLocalAddr(t)
+	catalog := getTestCatalog()
+	catalog.Path = t.TempDir() + "/catalog"
+
+	go func() {
+		err := books.ListenAndServe(addr, catalog)
+		if err != nil {
+			panic(err)
+		}
+	}()
+
+	resp, err := http.Get("http://" + addr + "/v1/find/bogus")
+	if err != nil {
+		panic(err)
+	}
+
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("unexpected status %d", resp.StatusCode)
+		return
+	}
+
+}
+
 func randomLocalAddr(t *testing.T) string {
 	t.Helper()
 

@@ -23,7 +23,9 @@ func ListenAndServe(addr string, catalog *Catalog) error {
 			ID := r.PathValue("id")
 			book, ok := catalog.GetBook(ID)
 			if !ok {
-				panic(fmt.Sprintf("%q not found", ID))
+				// panic(fmt.Sprintf("%q not found", ID))
+				http.Error(w, fmt.Sprintf("%q not found", ID), http.StatusNotFound)
+				return
 			}
 
 			err := json.NewEncoder(w).Encode(book)
