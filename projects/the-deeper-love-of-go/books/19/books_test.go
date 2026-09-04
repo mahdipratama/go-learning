@@ -256,6 +256,53 @@ func TestServer_ListAllBooks(t *testing.T) {
 	assertTestBooks(t, bookList)
 }
 
+func TestServer_FindsBookByID(t *testing.T) {
+	t.Parallel()
+	catalog := getTestCatalog()
+	catalog.Path = t.TempDir() + "/catalog"
+	addr := randomLocalAddr(t)
+
+	go func() {
+		err := books.ListenAndServe(addr, catalog)
+		if err != nil {
+			panic(err)
+		}
+	}()
+
+	resp, err := http.Get("http://" + addr + "/find/ABC04")
+	if err != nil {
+		panic(err)
+	}
+
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("unexpected status %d", resp.StatusCode)
+	}
+
+	got := books.Book{}
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = json.Unmarshal(data, &got)
+	if err != nil {
+		t.Fatalf("%v in %q", err, data)
+	}
+
+	want := books.Book{
+		Title:  "The Mountain is You",
+		Author: "Briana Weist",
+		Copies: 1,
+		ID:     "ABC04",
+	}
+
+	if want != got {
+		t.Fatalf("want: %#v, got: %#v", want, got)
+	}
+
+}
+
 func randomLocalAddr(t *testing.T) string {
 	t.Helper()
 
