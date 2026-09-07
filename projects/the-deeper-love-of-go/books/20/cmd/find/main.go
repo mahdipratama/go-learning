@@ -23,9 +23,11 @@ func main() {
 	ID := os.Args[1]
 	addr := books.NewClient("localhost:3000")
 
-	_, err := addr.GetBook(ID)
+	book, err := addr.GetBook(ID)
 	if err != nil {
-		panic(err)
+		fmt.Println(err)
+		return
 	}
 
+	fmt.Println(book)
 }

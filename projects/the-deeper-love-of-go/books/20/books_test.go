@@ -319,34 +319,6 @@ func TestServer_FindsBookByID(t *testing.T) {
 
 }
 
-func TestFindReturnsNotFoundWhenBookNotFound(t *testing.T) {
-	t.Parallel()
-
-	addr := randomLocalAddr(t)
-	catalog := getTestCatalog()
-	catalog.Path = t.TempDir() + "/catalog"
-
-	go func() {
-		err := books.ListenAndServe(addr, catalog)
-		if err != nil {
-			panic(err)
-		}
-	}()
-
-	resp, err := http.Get("http://" + addr + "/v1/find/bogus")
-	if err != nil {
-		panic(err)
-	}
-
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("unexpected status %d", resp.StatusCode)
-		return
-	}
-
-}
-
 func TestGetBook_OnClientFindsBookByID(t *testing.T) {
 	t.Parallel()
 
@@ -363,6 +335,16 @@ func TestGetBook_OnClientFindsBookByID(t *testing.T) {
 		t.Fatalf("want %#v, got %#v", want, got)
 	}
 
+}
+
+func TestFindReturnsErrorWhenBookNotFound(t *testing.T) {
+	t.Parallel()
+	client := getTestClient(t)
+	_, err := client.GetBook("bogus")
+
+	if err == nil {
+		t.Error("Want error when book not found, got nil")
+	}
 }
 
 func getTestClient(t *testing.T) *books.Client {

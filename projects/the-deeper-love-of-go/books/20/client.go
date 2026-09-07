@@ -27,23 +27,25 @@ func (client *Client) GetBook(ID string) (Book, error) {
 
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		fmt.Printf("Unexpected status %d", resp.StatusCode)
+	// if resp.StatusCode != http.StatusOK {
+	// 	fmt.Printf("Unexpected status %d", resp.StatusCode)
+	// }
+
+	if resp.StatusCode == http.StatusNotFound {
+		return Book{}, fmt.Errorf("%q not found", ID)
 	}
 
 	book := Book{}
 
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
-		fmt.Println(err)
+		return Book{}, err
 	}
 
 	err = json.Unmarshal(data, &book)
 	if err != nil {
-		fmt.Printf("%v in %q ", err, data)
+		return Book{}, fmt.Errorf("%v in %q ", err, data)
 	}
-
-	fmt.Println(book)
 
 	return book, nil
 }
