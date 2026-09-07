@@ -334,18 +334,8 @@ func TestFindReturnsNotFoundWhenBookNotFound(t *testing.T) {
 func TestGetBook_OnClientFindsBookByID(t *testing.T) {
 	t.Parallel()
 
-	addr := randomLocalAddr(t)
-	catalog := getTestCatalog()
-	catalog.Path = t.TempDir() + "/catalog"
+	client := getTestClient(t)
 
-	go func() {
-		err := books.ListenAndServe(addr, catalog)
-		if err != nil {
-			panic(err)
-		}
-	}()
-
-	client := books.NewClient(addr)
 	got, err := client.GetBook("ABC04")
 	if err != nil {
 		t.Fatal(err)
@@ -362,6 +352,25 @@ func TestGetBook_OnClientFindsBookByID(t *testing.T) {
 		t.Fatalf("want %#v, got %#v", want, got)
 	}
 
+}
+
+func getTestClient(t *testing.T) *books.Client {
+	t.Helper()
+
+	addr := randomLocalAddr(t)
+	catalog := getTestCatalog()
+	catalog.Path = t.TempDir() + "/catalog"
+
+	go func() {
+		err := books.ListenAndServe(addr, catalog)
+		if err != nil {
+			panic(err)
+		}
+	}()
+
+	client := books.NewClient(addr)
+
+	return client
 }
 
 func randomLocalAddr(t *testing.T) string {
