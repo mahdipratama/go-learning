@@ -11,6 +11,22 @@ import (
 	"testing"
 )
 
+var (
+	ABC04 = books.Book{
+		Title:  "The Mountain is You",
+		Author: "Briana Weist",
+		Copies: 1,
+		ID:     "ABC04",
+	}
+
+	ABC03 = books.Book{
+		Title:  "Never Finished",
+		Author: "David Goggins",
+		Copies: 2,
+		ID:     "ABC03",
+	}
+)
+
 func TestGetAllBooks_ReturnsAllBooks(t *testing.T) {
 	catalog := getTestCatalog()
 
@@ -341,14 +357,9 @@ func TestGetBook_OnClientFindsBookByID(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	want := books.Book{
-		Title:  "The Mountain is You",
-		Author: "Briana Weist",
-		Copies: 1,
-		ID:     "ABC04",
-	}
+	want := ABC04
 
-	if want != got {
+	if got != want {
 		t.Fatalf("want %#v, got %#v", want, got)
 	}
 
