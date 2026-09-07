@@ -21,9 +21,9 @@ func main() {
 	}
 
 	ID := os.Args[1]
-	addr := books.NewClient("localhost:3000")
+	client := books.NewClient("localhost:3000")
 
-	book, err := addr.GetBook(ID)
+	book, err := client.GetBook(ID)
 	if err != nil {
 		fmt.Println(err)
 		return

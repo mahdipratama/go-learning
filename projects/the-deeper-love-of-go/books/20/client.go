@@ -49,3 +49,30 @@ func (client *Client) GetBook(ID string) (Book, error) {
 
 	return book, nil
 }
+
+func (client *Client) GetAllBook() ([]Book, error) {
+	resp, err := http.Get("http://" + client.addr + "/v1/list")
+	if err != nil {
+		return nil, err
+	}
+
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("Unexpected status %d", resp.StatusCode)
+	}
+
+	data, err := io.ReadAll(resp.Body)
+
+	if err != nil {
+		return nil, err
+	}
+
+	bookList := []Book{}
+	err = json.Unmarshal(data, &bookList)
+	if err != nil {
+		return nil, fmt.Errorf("%v in %q ", err, data)
+	}
+
+	return bookList, nil
+}

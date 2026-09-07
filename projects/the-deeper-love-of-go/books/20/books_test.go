@@ -337,6 +337,19 @@ func TestGetBook_OnClientFindsBookByID(t *testing.T) {
 
 }
 
+func TestGetAllBook_OnClientListAllBooks(t *testing.T) {
+	t.Parallel()
+
+	client := getTestClient(t)
+
+	bookList, err := client.GetAllBook()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	assertTestBooks(t, bookList)
+}
+
 func TestFindReturnsErrorWhenBookNotFound(t *testing.T) {
 	t.Parallel()
 	client := getTestClient(t)
