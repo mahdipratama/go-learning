@@ -360,6 +360,30 @@ func TestFindReturnsErrorWhenBookNotFound(t *testing.T) {
 	}
 }
 
+func TestGetCopies_OnClientReturnsBooksCopiesForBook(t *testing.T) {
+	t.Parallel()
+	client := getTestClient(t)
+	copies, err := client.GetCopies("ABC04")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if copies != 1 {
+		t.Fatalf("want 1 copy, got %d", copies)
+	}
+
+}
+
+func TestGetCopies_OnClientErrorsWhenBookNotFound(t *testing.T) {
+	t.Parallel()
+	client := getTestClient(t)
+	_, err := client.GetCopies("bogus")
+
+	if err == nil {
+		t.Error("Want error when book not found, got nil")
+	}
+}
+
 func getTestClient(t *testing.T) *books.Client {
 	t.Helper()
 

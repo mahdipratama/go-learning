@@ -78,6 +78,16 @@ func (client *Client) GetAllBook() ([]Book, error) {
 	return bookList, nil
 }
 
+func (client *Client) GetCopies(ID string) (int, error) {
+	copies := 0
+	err := client.MakeAPIRequest("/getcopies/"+ID, &copies)
+	if err != nil {
+		return 0, err
+	}
+
+	return copies, nil
+}
+
 func (client *Client) MakeAPIRequest(URI string, result any) error {
 	resp, err := http.Get("http://" + client.addr + "/v1" + URI)
 	if err != nil {
