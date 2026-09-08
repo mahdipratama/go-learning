@@ -88,6 +88,19 @@ func (client *Client) GetCopies(ID string) (int, error) {
 	return copies, nil
 }
 
+func (client *Client) AddCopies(ID string, copies int) (int, error) {
+	// URI := "/addcopies/" + ID + "/" + strconv.Itoa(copies)
+	URI := fmt.Sprintf("/addcopies/%s/%d", ID, copies)
+	stock := 0
+
+	err := client.MakeAPIRequest(URI, &stock)
+	if err != nil {
+		return 0, err
+	}
+
+	return stock, nil
+}
+
 func (client *Client) MakeAPIRequest(URI string, result any) error {
 	resp, err := http.Get("http://" + client.addr + "/v1" + URI)
 	if err != nil {
