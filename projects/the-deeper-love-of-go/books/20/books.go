@@ -25,8 +25,6 @@ type Catalog struct {
 	Path string
 }
 
-var ErrNotEnoughStock = errors.New("not enough stock")
-
 func (catalog *Catalog) GetAllBooks() []Book {
 	catalog.mu.RLock()
 	defer catalog.mu.RUnlock()
@@ -117,6 +115,8 @@ func (catalog *Catalog) AddCopies(ID string, copies int) (int, error) {
 	return book.Copies, nil
 }
 
+var ErrNotEnoughStock = errors.New("not enough stock")
+
 func (catalog *Catalog) SubCopies(ID string, copies int) (int, error) {
 
 	catalog.mu.Lock()
@@ -128,7 +128,7 @@ func (catalog *Catalog) SubCopies(ID string, copies int) (int, error) {
 	}
 
 	if copies > book.Copies {
-		return 0, ErrNotEnoughStock
+		return 0, fmt.Errorf("%w: %d", ErrNotEnoughStock, book.Copies)
 	}
 
 	book.Copies -= copies

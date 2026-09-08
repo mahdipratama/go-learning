@@ -79,8 +79,6 @@ func ListenAndServe(addr string, catalog *Catalog) error {
 
 	mux.HandleFunc("/v1/subcopies/{id}/{copies}",
 		func(w http.ResponseWriter, r *http.Request) {
-			var ErrNotEnoughStock = errors.New("not enough stock")
-
 			ID := r.PathValue("id")
 			copies, err := strconv.Atoi(r.PathValue("copies"))
 			if err != nil {
