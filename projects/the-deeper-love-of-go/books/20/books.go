@@ -2,6 +2,7 @@ package books
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"maps"
 	"os"
@@ -23,6 +24,8 @@ type Catalog struct {
 	data map[string]Book
 	Path string
 }
+
+var ErrNotEnoughStock = errors.New("not enough stock")
 
 func (catalog *Catalog) GetAllBooks() []Book {
 	catalog.mu.RLock()
@@ -125,7 +128,7 @@ func (catalog *Catalog) SubCopies(ID string, copies int) (int, error) {
 	}
 
 	if copies > book.Copies {
-		return 0, fmt.Errorf("insufficient stock: available %d, requested %d", book.Copies, copies)
+		return 0, ErrNotEnoughStock
 	}
 
 	book.Copies -= copies

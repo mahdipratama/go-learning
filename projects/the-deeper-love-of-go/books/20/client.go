@@ -121,14 +121,13 @@ func (client *Client) MakeAPIRequest(URI string, result any) error {
 	}
 
 	defer resp.Body.Close()
-	if resp.StatusCode == http.StatusNotFound {
-		return errors.New("not found")
-	}
-
 	if resp.StatusCode != http.StatusOK {
+		data, _ := io.ReadAll(resp.Body)
+		if len(data) > 0 {
+			return errors.New(string(data))
+		}
 		return fmt.Errorf("unexpected status %d", resp.StatusCode)
 	}
-
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return err
