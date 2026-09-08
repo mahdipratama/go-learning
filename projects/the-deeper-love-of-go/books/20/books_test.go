@@ -416,6 +416,58 @@ func TestAddCopies_OnClientErrorsWhenBookNotFound(t *testing.T) {
 	}
 }
 
+func TestSubCopies_CorrectlyUpdatesStockLevel(t *testing.T) {
+	t.Parallel()
+	client := getTestClient(t)
+	copies, err := client.GetCopies("ABC03")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if copies != 2 {
+		t.Fatalf("Want 1 copy before change, got: %d", copies)
+	}
+
+	stock, err := client.SubCopies("ABC03", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if stock != 1 {
+		t.Fatalf("want 1 copies after change, got %d", copies)
+	}
+}
+
+func TestSubCopies_OnClientErrorsWhenBookNotFound(t *testing.T) {
+	t.Parallel()
+
+	client := getTestClient(t)
+	_, err := client.SubCopies("bogus", 1)
+	if err == nil {
+		t.Error("want error when book not found, got nil")
+	}
+}
+
+func TestSubCopies_OnClientErrorsWhenInsufficientStockOccurs(t *testing.T) {
+	t.Parallel()
+
+	client := getTestClient(t)
+	copies, err := client.GetCopies("ABC03")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if copies != 2 {
+		t.Fatalf("want 2 copy before change, got %d", copies)
+	}
+
+	_, err = client.SubCopies("ABC03", 4)
+	if err == nil {
+		t.Error("want error when substract insufficient stock, got nil")
+	}
+
+}
+
 func getTestClient(t *testing.T) *books.Client {
 	t.Helper()
 

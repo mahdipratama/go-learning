@@ -114,12 +114,24 @@ func (catalog *Catalog) AddCopies(ID string, copies int) (int, error) {
 	return book.Copies, nil
 }
 
-func (book *Book) AddCopies(copies int) error {
-	if copies < 0 {
-		return fmt.Errorf("negative number of copies: %d", copies)
+func (catalog *Catalog) SubCopies(ID string, copies int) (int, error) {
+
+	catalog.mu.Lock()
+	defer catalog.mu.Unlock()
+
+	book, ok := catalog.data[ID]
+	if !ok {
+		return 0, fmt.Errorf("ID: %q not found", ID)
 	}
 
-	return nil
+	if copies > book.Copies {
+		return 0, fmt.Errorf("insufficient stock: available %d, requested %d", book.Copies, copies)
+	}
+
+	book.Copies -= copies
+	catalog.data[ID] = book
+
+	return book.Copies, nil
 }
 
 func NewCatalog() *Catalog {

@@ -76,6 +76,32 @@ func ListenAndServe(addr string, catalog *Catalog) error {
 			}
 		})
 
+	mux.HandleFunc("/v1/subcopies/{id}/{copies}",
+		func(w http.ResponseWriter, r *http.Request) {
+			ID := r.PathValue("id")
+			copies, err := strconv.Atoi(r.PathValue("copies"))
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+
+			stock, err := catalog.SubCopies(ID, copies)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusNotFound)
+				return
+			}
+
+			err = catalog.Sync()
+			if err != nil {
+				panic(err)
+			}
+
+			err = json.NewEncoder(w).Encode(stock)
+			if err != nil {
+				panic(err)
+			}
+		})
+
 	return http.ListenAndServe(addr, mux)
 
 }
